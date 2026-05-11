@@ -1,6 +1,6 @@
 # ⬡ SICC — Supplier Intelligence Command Center
 
-**App 4 of 4** in an AI engineering portfolio targeting senior quality + AI leadership roles.
+**App 4 of 4** 
 
 SICC is a production-grade Streamlit application combining ML risk scoring, RAG-powered Q&A, SHAP explainability, and executive decision support across a portfolio of 1,200 suppliers.
 
@@ -246,6 +246,3 @@ SICC fills the ML + agentic gap in the portfolio. Apps 1–3 are all RAG Q&A. SI
 - **Phase 6:** `PRODUCTION_ARCHITECTURE.md` · `LESSONS_LEARNED_SICC.md` · pyproject.toml finalisation
 
 ---
-
-*Built by Magdalena Koleva — Quality & HSE Manager at Soitec Netherlands*
-*AI engineering portfolio — targeting senior quality + AI leadership roles*
