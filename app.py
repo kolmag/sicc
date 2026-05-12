@@ -1698,7 +1698,7 @@ Return ONLY a JSON object with these exact fields (no markdown, no explanation):
         ⬡ <strong>Two-layer Q&A.</strong>
         Portfolio Data mode queries structured supplier KPIs, risk scores, audits, and events directly from SQLite.
         Knowledge Base mode uses hybrid RAG (BM25 + embedding + RRF) over {231} KB chunks
-        (15 supplier quality documents) via ChromaDB · OSS-120B generator · OSS-20B groundedness checker.
+        (16 supplier quality documents) via ChromaDB · OSS-120B generator · OSS-20B groundedness checker.
     </div>""", unsafe_allow_html=True)
 
 

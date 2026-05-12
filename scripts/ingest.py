@@ -64,6 +64,8 @@ def parse_args():
                    help="Path to ChromaDB directory")
     p.add_argument("--reset", action="store_true",
                    help="Delete and recreate the collection before ingesting")
+    p.add_argument("--file", default=None,
+                   help="Ingest a single file only (filename, not full path)")
     p.add_argument("--dry-run", action="store_true",
                    help="Parse and chunk only — do not embed or store")
     return p.parse_args()
@@ -523,7 +525,10 @@ def ingest_all(kb_path: str, db_path: str, reset: bool, dry_run: bool):
     )
 
     kb_dir   = Path(kb_path)
-    md_files = sorted([f for f in kb_dir.glob("*.md") if f.name not in README_EXCLUDE])
+    if args.file:
+        md_files = [kb_dir / args.file]
+    else:
+        md_files = sorted([f for f in kb_dir.glob("*.md") if f.name not in README_EXCLUDE])
 
     if not md_files:
         print(f"[ingest] No markdown files found in {kb_path}")
