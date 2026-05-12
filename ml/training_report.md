@@ -1,6 +1,6 @@
 # SICC ML Training Report
 
-**Run:** 2026-05-10 16:58:23  
+**Run:** 2026-05-11 19:45:30  
 **Winner:** RandomForest  
 **Decision criterion:** F1-Red — catching at-risk suppliers is the priority  
 

@@ -9,6 +9,7 @@ import pickle
 import sqlite3
 from pathlib import Path
 
+from litellm.types.llms.vertex_ai import Instance
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -202,7 +203,6 @@ def load_all_data():
 
     return tables
 
-
 @st.cache_resource
 def load_ml_artefacts():
     """Load trained model + SHAP payload. Returns None if not yet trained."""
@@ -213,16 +213,102 @@ def load_ml_artefacts():
     if not model_path.exists():
         return None
 
-    with open(model_path, "rb") as f:
-        model = pickle.load(f)
-    with open(shap_path, "rb") as f:
-        shap_payload = pickle.load(f)
+    try:
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
+        with open(shap_path, "rb") as f:
+            shap_payload = pickle.load(f)
 
-    metrics = {}
-    if metrics_path.exists():
-        with open(metrics_path) as f:
-            metrics = json.load(f)
+        # Normalise SHAP format
+        sv = shap_payload["shap_values"]
+        if isinstance(sv, np.ndarray) and sv.ndim == 3:
+            sv = [sv[:, :, i] for i in range(sv.shape[2])]
 
+        metrics = {}
+        if metrics_path.exists():
+            with open(metrics_path) as f:
+                metrics = json.load(f)
+
+        return {
+            "model":          model,
+            "shap_values":    sv,
+            "expected_value": shap_payload["expected_value"],
+            "feature_names":  shap_payload["feature_names"],
+            "X":              shap_payload["X"],
+            "supplier_ids":   shap_payload["supplier_ids"],
+            "y_pred":         shap_payload["y_pred"],
+            "y_pred_proba":   shap_payload["y_pred_proba"],
+            "label_order":    shap_payload["label_order"],
+            "winner_name":    shap_payload.get("winner_name", "RandomForest"),
+            "metrics":        metrics,
+        }
+    except Exception as e:
+        print(f"[ML] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+        
+@st.cache_data(ttl=3600, show_spinner=False)
+def generate_executive_summary(
+    n_suppliers: int,
+    n_regions: int,
+    n_red: int,
+    n_amber: int,
+    n_green: int,
+    high_risk_pct: float,
+    high_risk_spend: float,
+    single_source_red: int,
+    open_events: int,
+    programs_at_risk: int,
+    top_red_names: str,
+) -> str:
+    """Generate LLM executive summary. Cached per session per filter state."""
+    from litellm import completion as litellm_completion
+ 
+    prompt = f"""You are a Chief Procurement Officer writing a concise executive portfolio summary.
+ 
+Portfolio snapshot:
+- Total suppliers monitored: {n_suppliers:,}
+- Regions covered: {n_regions}
+- Risk distribution: {n_red} RED ({high_risk_pct:.1f}%), {n_amber} AMBER, {n_green} GREEN
+- High-risk annual spend exposure: €{high_risk_spend/1e6:.1f}M
+- Single-source RED suppliers (no qualified alternative): {single_source_red}
+- Open external alerts (ESG, sanctions, geopolitical): {open_events}
+- NPI/APQP programmes with delayed milestones: {programs_at_risk}
+- Top priority suppliers: {top_red_names}
+ 
+Write a 3-paragraph executive brief:
+1. Portfolio risk status and headline numbers (2-3 sentences)
+2. Most critical risks requiring immediate action, with specific supplier context (2-3 sentences)
+3. Recommended actions with clear timelines and owners (3 bullet points)
+ 
+Rules:
+- Be direct and specific — no generic filler
+- Use supplier quality terminology (SCAR, OTD, PPM, for-cause audit, dual-source)
+- Quantify risks in business terms (spend exposure, supply continuity days)
+- Actions must have timelines (e.g. "within 30 days") and owners (e.g. "Supply Chain Director")
+- Do not mention that this is AI-generated"""
+ 
+    try:
+        response = litellm_completion(
+            model="groq/openai/gpt-oss-120b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=600,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return (
+            f"The supplier portfolio currently spans **{n_suppliers:,} suppliers** across **{n_regions} regions**. "
+            f"**{n_red} suppliers ({high_risk_pct:.1f}%)** are rated HIGH RISK, representing **€{high_risk_spend/1e6:.1f}M** in annual spend exposure. "
+            f"Of these, **{single_source_red} are sole-source** dependencies with no qualified alternative.\n\n"
+            f"Top priority suppliers requiring immediate attention: **{top_red_names}**. "
+            f"**{open_events} external alerts** are currently open. "
+            f"**{programs_at_risk} NPI/APQP programmes** have delayed milestones.\n\n"
+            f"*Recommended actions: (1) Schedule for-cause audits for all RED sole-source suppliers within 30 days. "
+            f"(2) Initiate dual-sourcing feasibility for top 3 single-source RED suppliers. "
+            f"(3) Review all open Critical/High external events for CAPA linkage.*"
+        )
     # Normalise SHAP format — new SHAP returns (n_samples, n_features, n_classes)
     # convert to list of (n_samples, n_features) per class
     sv = shap_payload["shap_values"]
@@ -608,24 +694,27 @@ if page == "Executive Portfolio":
     ).sort_values("composite_risk_score").head(3)
     top_names = ", ".join(top_red["name"].str[:20].tolist()) if len(top_red) > 0 else "none identified"
 
-    summary_text = f"""
-    The supplier portfolio currently spans **{total_suppliers:,} suppliers** across **{len(filtered_suppliers['region'].unique())} regions**.
-    **{n_red} suppliers ({high_risk_pct:.1f}%)** are rated HIGH RISK, representing **€{high_risk_spend/1e6:.1f}M** in annual spend exposure.
-    Of these, **{single_source_red} are sole-source** dependencies with no qualified alternative — these represent the highest business continuity risk.
+    with st.spinner("Generating executive brief..."):
+        summary_text = generate_executive_summary(
+            n_suppliers=total_suppliers,
+            n_regions=len(filtered_suppliers["region"].unique()),
+            n_red=n_red,
+            n_amber=n_amber,
+            n_green=n_green,
+            high_risk_pct=high_risk_pct,
+            high_risk_spend=high_risk_spend,
+            single_source_red=single_source_red,
+            open_events=open_events,
+            programs_at_risk=programs_at_risk,
+            top_red_names=top_names,
+        )
 
-    Top priority suppliers requiring immediate attention: **{top_names}**.
-
-    **{open_events} external alerts** are currently open (ESG, sanctions, geopolitical, regulatory).
-    **{programs_at_risk} NPI/APQP programmes** have delayed milestones with confirmed supplier impact.
-
-    *Recommended actions: (1) Schedule for-cause audits for all RED sole-source suppliers within 30 days.
-    (2) Initiate dual-sourcing feasibility for the top 3 single-source RED suppliers.
-    (3) Review all open Critical/High external events for CAPA linkage.*
-    """
     st.markdown(f"""
     <div class="ai-summary">
-        <div class="ai-badge">AI Generated · Powered by portfolio data</div>
-        <div style="font-size:0.85rem; color:#cbd5e1; line-height:1.65;">{summary_text}</div>
+        <div class="ai-badge">AI Generated · OSS-120B · Portfolio data as of today</div>
+        <div style="font-size:0.85rem; color:#cbd5e1; line-height:1.65;">
+            {summary_text.replace(chr(10), '<br>')}
+        </div>
     </div>""", unsafe_allow_html=True)
 
 
@@ -785,11 +874,97 @@ elif page == "Risk Scoring Engine":
 
     # Global feature importance expander
     if ml is not None:
-        with st.expander("📊 Global Feature Importance (mean |SHAP| — RED class)", expanded=False):
+        with st.expander("📊 Global Feature Importance & Model Comparison (mean |SHAP| — RED class)", expanded=False):
+
+            # ── Model comparison table ────────────────────────────────────────
+            metrics     = ml.get("metrics", {})
+            rf_m        = metrics.get("rf_metrics", {})
+            xgb_m       = metrics.get("xgb_metrics", {})
+            winner_name = metrics.get("winner", ml.get("winner_name", "RandomForest"))
+
+            if rf_m and xgb_m:
+                st.markdown('<div class="section-header">RF vs XGBoost — Model Comparison</div>',
+                            unsafe_allow_html=True)
+
+                comparison_rows = [
+                    ("Accuracy",  "accuracy"),
+                    ("F1 Macro",  "f1_macro"),
+                    ("AUC (OvR)", "auc_ovr"),
+                    ("F1 Green",  "f1_green"),
+                    ("F1 Amber",  "f1_amber"),
+                    ("F1 Red ★",  "f1_red"),
+                ]
+
+                metrics_list = ["Metric", "RandomForest", "XGBoost", "Winner"]
+                rows_data = []
+                for label, key in comparison_rows:
+                    rf_val  = rf_m.get(key, 0)
+                    xgb_val = xgb_m.get(key, 0)
+                    winner  = "RF ✓" if rf_val >= xgb_val else "XGB ✓"
+                    is_primary = label == "F1 Red ★"
+                    rows_data.append((label, rf_val, xgb_val, winner, is_primary))
+
+                # Plotly grouped bar for comparison
+                labels  = [r[0] for r in rows_data]
+                rf_vals = [r[1] for r in rows_data]
+                xgb_vals= [r[2] for r in rows_data]
+
+                fig_cmp = go.Figure()
+                fig_cmp.add_trace(go.Bar(
+                    name="RandomForest",
+                    x=labels, y=rf_vals,
+                    marker_color="#3b82f6", opacity=0.85,
+                    text=[f"{v:.3f}" for v in rf_vals],
+                    textposition="outside", textfont=dict(size=9),
+                ))
+                fig_cmp.add_trace(go.Bar(
+                    name="XGBoost",
+                    x=labels, y=xgb_vals,
+                    marker_color="#fb923c", opacity=0.85,
+                    text=[f"{v:.3f}" for v in xgb_vals],
+                    textposition="outside", textfont=dict(size=9),
+                ))
+                fig_cmp.update_layout(
+                    barmode="group",
+                    yaxis=dict(range=[0.80, 0.97], title="Score"),
+                    legend=dict(orientation="h", y=1.12),
+                    shapes=[dict(
+                        type="rect", xref="x", yref="paper",
+                        x0=4.5, x1=5.5, y0=0, y1=1,
+                        fillcolor="#3b82f6", opacity=0.08,
+                        line=dict(width=0),
+                    )],
+                    annotations=[dict(
+                        x=5, y=1.08, xref="x", yref="paper",
+                        text="★ Primary criterion", showarrow=False,
+                        font=dict(size=9, color="#60a5fa"),
+                    )],
+                )
+                plotly_dark_layout(fig_cmp, height=300)
+                st.plotly_chart(fig_cmp, use_container_width=True)
+
+                # Decision rationale
+                st.markdown(f"""
+                <div style="background:#0f1623; border:1px solid #1e2d45; border-radius:8px;
+                            padding:0.75rem 1rem; margin-bottom:1rem; font-size:0.78rem; color:#94a3b8;">
+                    <span style="color:#34d399; font-weight:600;">✓ Winner: {winner_name}</span>
+                    &nbsp;·&nbsp;
+                    Decision criterion: <span style="color:#60a5fa;">F1-Red = {rf_m.get('f1_red',0):.3f} (RF)
+                    vs {xgb_m.get('f1_red',0):.3f} (XGB)</span>
+                    &nbsp;·&nbsp;
+                    Catching RED-risk suppliers is the priority — F1-Red is the tiebreaker.
+                    &nbsp;·&nbsp;
+                    12% label noise · 80/20 train-test split · seed=42
+                </div>""", unsafe_allow_html=True)
+
+            # ── Performance metrics cards ─────────────────────────────────────
             st.markdown(make_ml_metrics_html(ml), unsafe_allow_html=True)
+
+            # ── Feature importance chart ──────────────────────────────────────
             fi_fig = make_feature_importance_chart(ml, top_n=20)
             if fi_fig:
                 st.plotly_chart(fi_fig, use_container_width=True)
+
             m = ml["metrics"].get("winner_metrics", {})
             st.markdown(
                 f'<div style="font-size:0.72rem; color:#475569; margin-top:0.5rem;">'
@@ -1089,6 +1264,143 @@ elif page == "APQP / NPI Tracker":
         plotly_dark_layout(fig2, height=200)
         st.plotly_chart(fig2, use_container_width=True)
 
+    # ── APQP Gate Matrix ──────────────────────────────────────────────────────
+    with st.expander("📊 APQP Gate Matrix — Phase completion heatmap", expanded=True):
+        PHASES = [
+            ("supplier_selection",           "1. Supplier\nSelection"),
+            ("supplier_nomination",          "2. Supplier\nNomination"),
+            ("design_validation_of_process", "3. Design\nValidation"),
+            ("process_validation",           "4. Process\nValidation"),
+            ("initial_sample_validation",    "5. Initial\nSample"),
+            ("start_of_production",          "6. SOP"),
+            ("pqa_management",               "7. PQA\nMgmt"),
+            ("yearly_is_submission",         "8. Yearly IS\nSubmission"),
+            ("ppap_update",                  "9. PPAP\nUpdate"),
+        ]
+ 
+        STATUS_SCORE = {
+            "Validated":    4,
+            "Submitted":    3,
+            "In Progress":  2,
+            "Overdue":      1,
+            "Not Started":  0,
+        }
+ 
+        STATUS_COLOR = {
+            "Validated":   "#34d399",
+            "Submitted":   "#60a5fa",
+            "In Progress": "#fb923c",
+            "Overdue":     "#f87171",
+            "Not Started": "#1e2d45",
+        }
+ 
+        # Filter controls
+        mc1, mc2, mc3 = st.columns([1, 1, 2])
+        with mc1:
+            matrix_status = st.selectbox("Programme status",
+                ["All", "Active", "Delayed", "On Hold"], key="matrix_status")
+        with mc2:
+            matrix_family = st.selectbox("Product family",
+                ["All"] + sorted(apqp_merged["product_family"].unique().tolist()),
+                key="matrix_family")
+        with mc3:
+            matrix_search = st.text_input("Search supplier name", key="matrix_search",
+                                           placeholder="Type to filter...")
+ 
+        matrix_df = apqp_merged.copy()
+        if matrix_status != "All":
+            matrix_df = matrix_df[matrix_df["status"] == matrix_status]
+        if matrix_family != "All":
+            matrix_df = matrix_df[matrix_df["product_family"] == matrix_family]
+        if matrix_search:
+            matrix_df = matrix_df[matrix_df["name"].str.contains(
+                matrix_search, case=False, na=False)]
+ 
+        matrix_df = matrix_df.head(40)  # cap at 40 rows for readability
+ 
+        if matrix_df.empty:
+            st.info("No programmes match the current filter.")
+        else:
+            # Build z (score), text, and color matrices
+            phase_keys  = [p[0] for p in PHASES]
+            phase_labels = [p[1] for p in PHASES]
+ 
+            z_matrix    = []
+            text_matrix = []
+            color_matrix = []
+ 
+            y_labels = []
+            for _, row in matrix_df.iterrows():
+                z_row    = []
+                text_row = []
+                col_row  = []
+                for pk in phase_keys:
+                    col_name = f"{pk}_status"
+                    status = row.get(col_name, "Not Started") or "Not Started"
+                    z_row.append(STATUS_SCORE.get(status, 0))
+                    text_row.append(status[:3].upper() if status != "Not Started" else "—")
+                    col_row.append(STATUS_COLOR.get(status, "#1e2d45"))
+                z_matrix.append(z_row)
+                text_matrix.append(text_row)
+                color_matrix.append(col_row)
+ 
+                # Y label: supplier name + project type + risk badge
+                risk_row_data = risk_scores[risk_scores["supplier_id"] == row["supplier_id"]]
+                risk_lbl = risk_row_data["risk_label"].iloc[0] if not risk_row_data.empty else "green"
+                risk_icon = {"red": "🔴", "amber": "🟡", "green": "🟢"}.get(risk_lbl, "⚪")
+                y_labels.append(f"{risk_icon} {row['name'][:22]} · {row['project_type'][:12]}")
+ 
+            # Plotly heatmap
+            colorscale = [
+                [0.00, "#1e2d45"],   # Not Started
+                [0.25, "#f87171"],   # Overdue
+                [0.50, "#fb923c"],   # In Progress
+                [0.75, "#60a5fa"],   # Submitted
+                [1.00, "#34d399"],   # Validated
+            ]
+ 
+            fig_matrix = go.Figure(go.Heatmap(
+                z=z_matrix,
+                x=phase_labels,
+                y=y_labels,
+                text=text_matrix,
+                texttemplate="%{text}",
+                textfont=dict(size=9, color="#0f1923"),
+                colorscale=colorscale,
+                zmin=0, zmax=4,
+                showscale=False,
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "Phase: %{x}<br>"
+                    "Status: %{text}<extra></extra>"
+                ),
+                xgap=2,
+                ygap=1,
+            ))
+ 
+            fig_matrix.update_layout(
+                height=max(300, len(matrix_df) * 28 + 80),
+                margin=dict(l=10, r=10, t=30, b=10),
+                paper_bgcolor="#0f1923",
+                plot_bgcolor="#0f1923",
+                font=dict(color="#94a3b8", size=10, family="DM Sans"),
+                xaxis=dict(side="top", tickfont=dict(size=9), tickangle=-20),
+                yaxis=dict(tickfont=dict(size=9), autorange="reversed"),
+            )
+            st.plotly_chart(fig_matrix, use_container_width=True)
+ 
+            # Legend
+            st.markdown(
+                '<div style="display:flex; gap:1rem; font-size:0.7rem; color:#64748b; margin-top:-0.5rem;">'
+                + "".join([
+                    f'<span><span style="background:{c}; padding:1px 6px; border-radius:3px; '
+                    f'color:#0f1923; font-size:0.68rem;">{s[:3].upper()}</span> {s}</span>'
+                    for s, c in STATUS_COLOR.items()
+                ])
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # PAGE 5: SUPPLIER Q&A AGENT — RAG CONNECTED
@@ -1267,62 +1579,99 @@ elif page == "Supplier Q&A Agent":
                 if filter_region:
                     result_df = result_df[result_df["region"].isin(filter_region)]
 
-                q_lower     = query.lower()
+                # LLM intent classification
+                @st.cache_data(ttl=300, show_spinner=False)
+                def classify_intent(q: str) -> dict:
+                    from litellm import completion as _completion
+                    import json as _json
+                    prompt = f"""Classify this supplier portfolio query into a structured filter.
+
+Query: {q}
+
+Return ONLY a JSON object with these exact fields (no markdown, no explanation):
+{{
+  "intent": "red_risk" | "single_source" | "ppm_threshold" | "audit_findings" | "capa_events" | "geopolitical" | "apqp_delayed" | "general",
+  "country": "country name or null",
+  "ppm_threshold": number or null,
+  "risk_tier": "red" | "amber" | "green" | null,
+  "finding_type": "Major NCR" | "Critical NCR" | "Minor NCR" | null
+}}"""
+                    try:
+                        resp = _completion(
+                            model="groq/openai/gpt-oss-120b",
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0, max_tokens=120,
+                        )
+                        text = resp.choices[0].message.content.strip()
+                        text = text.replace("```json", "").replace("```", "").strip()
+                        return _json.loads(text)
+                    except Exception:
+                        return {"intent": "general", "country": None,
+                                "ppm_threshold": None, "risk_tier": None, "finding_type": None}
+
+                with st.spinner("Analysing query..."):
+                    intent = classify_intent(query)
+
                 answer_text = ""
                 show_df     = None
 
-                if "red" in q_lower or "high risk" in q_lower:
-                    show_df     = result_df[result_df["risk_label"] == "red"].sort_values("composite_risk_score")
-                    answer_text = f"Found **{len(show_df)} RED-risk suppliers** matching your criteria."
-                elif "sole" in q_lower or "single source" in q_lower:
-                    show_df     = result_df[result_df["single_source"].isin([1, True])].sort_values("risk_label")
+                if intent["intent"] == "red_risk" or intent.get("risk_tier") == "red":
+                    tier    = intent.get("risk_tier") or "red"
+                    show_df = result_df[result_df["risk_label"] == tier].sort_values("composite_risk_score")
+                    answer_text = f"Found **{len(show_df)} {tier.upper()}-risk suppliers** matching your criteria."
+
+                elif intent["intent"] == "single_source":
+                    show_df = result_df[result_df["single_source"].isin([1, True])].sort_values("risk_label")
                     answer_text = f"Found **{len(show_df)} single-source suppliers**. {len(show_df[show_df['risk_label']=='red'])} are RED risk."
-                elif "ppm" in q_lower:
-                    threshold   = 300
-                    show_df     = result_df[result_df["avg_ppm_3m"] > threshold].sort_values("avg_ppm_3m", ascending=False)
-                    answer_text = f"Found **{len(show_df)} suppliers** with PPM > {threshold} in the last 3 months."
-                elif "audit" in q_lower or "finding" in q_lower:
-                    audit_sup   = audits[audits["highest_finding_type"].isin(["Major NCR", "Critical NCR"])]["supplier_id"].unique()
-                    show_df     = result_df[result_df["supplier_id"].isin(audit_sup)].sort_values("composite_risk_score")
-                    answer_text = f"Found **{len(show_df)} suppliers** with open major or critical NCRs."
-                elif "capa" in q_lower or "event" in q_lower or "alert" in q_lower:
+
+                elif intent["intent"] == "ppm_threshold":
+                    threshold = intent.get("ppm_threshold") or 300
+                    show_df   = result_df[result_df["avg_ppm_3m"] > threshold].sort_values("avg_ppm_3m", ascending=False)
+                    answer_text = f"Found **{len(show_df)} suppliers** with PPM > {threshold:.0f} in the last 3 months."
+
+                elif intent["intent"] == "audit_findings":
+                    finding = intent.get("finding_type") or "Major NCR"
+                    if finding not in ["Major NCR", "Critical NCR", "Minor NCR"]:
+                        finding = "Major NCR"
+                    audit_sup = audits[audits["highest_finding_type"] == finding]["supplier_id"].unique()
+                    show_df   = result_df[result_df["supplier_id"].isin(audit_sup)].sort_values("composite_risk_score")
+                    answer_text = f"Found **{len(show_df)} suppliers** with **{finding}** audit findings."
+
+                elif intent["intent"] == "capa_events":
                     capa_needed = events[
-                        (events["requires_capa"] == True) & (events["capa_linked"] == False) &
+                        (events["requires_capa"] == True) &
+                        (events["capa_linked"] == False) &
                         (events["status"].isin(["Open", "Under Review"]))
                     ]["supplier_id"].unique()
-                    show_df     = result_df[result_df["supplier_id"].isin(capa_needed)].sort_values("composite_risk_score")
-                    answer_text = f"Found **{len(show_df)} suppliers** with open Critical/High alerts and no linked CAPA."
-                elif "geopolit" in q_lower or any(
-                    c.lower() in q_lower for c in suppliers["country"].unique()
-                ):
+                    show_df = result_df[result_df["supplier_id"].isin(capa_needed)].sort_values("composite_risk_score")
+                    answer_text = f"Found **{len(show_df)} suppliers** with open alerts and no linked CAPA."
+
+                elif intent["intent"] == "geopolitical":
                     geo_sups = events[
                         (events["event_type"] == "Geopolitical") &
                         (events["severity"].isin(["High", "Critical"])) &
                         (events["status"].isin(["Open", "Under Review", "Escalated"]))
                     ]["supplier_id"].unique()
                     geo_mask = result_df["supplier_id"].isin(geo_sups)
-
-                    # Extract country from query if mentioned
-                    mentioned_country = next(
-                        (c for c in suppliers["country"].unique() if c.lower() in q_lower),
-                        None
-                    )
-                    if mentioned_country:
-                        country_mask = result_df["country"] == mentioned_country
-                        show_df      = result_df[country_mask & geo_mask].sort_values("composite_risk_score")
-                        answer_text  = f"Found **{len(show_df)} {mentioned_country}-based suppliers** with active High/Critical geopolitical events."
+                    country  = intent.get("country")
+                    if country:
+                        country_mask = result_df["country"].str.lower() == country.lower()
+                        show_df      = result_df[geo_mask & country_mask].sort_values("composite_risk_score")
+                        answer_text  = f"Found **{len(show_df)} {country}-based suppliers** with active High/Critical geopolitical events."
                     else:
                         show_df     = result_df[geo_mask].sort_values("composite_risk_score")
                         answer_text = f"Found **{len(show_df)} suppliers** with active High/Critical geopolitical events."
-                elif "apqp" in q_lower or "delayed" in q_lower or "programme" in q_lower:
+
+                elif intent["intent"] == "apqp_delayed":
                     red_sups     = result_df[result_df["risk_label"] == "red"]["supplier_id"].unique()
                     delayed_apqp = apqp[apqp["is_delayed"] == 1].merge(
                         suppliers[["supplier_id", "name"]], on="supplier_id")
-                    show_df      = delayed_apqp[delayed_apqp["supplier_id"].isin(red_sups)]
-                    answer_text  = f"Found **{len(show_df)} delayed APQP programmes** linked to RED-risk suppliers."
+                    show_df     = delayed_apqp[delayed_apqp["supplier_id"].isin(red_sups)]
+                    answer_text = f"Found **{len(show_df)} delayed APQP programmes** linked to RED-risk suppliers."
+
                 else:
                     show_df     = result_df.sort_values("composite_risk_score").head(20)
-                    answer_text = f"Showing top {len(show_df)} suppliers matching your filters."
+                    answer_text = f"Showing top {len(show_df)} suppliers by risk score. Refine your query for a specific filter."
 
                 st.markdown(f"""
                 <div class="ai-summary">
@@ -1522,8 +1871,198 @@ elif page == "What-If Simulator":
                 plotly_dark_layout(fig, height=220)
                 st.plotly_chart(fig, use_container_width=True)
 
-            else:
-                st.info(f"Simulation for '{scenario_type}' — configure parameters and click Run Simulation.")
+            elif scenario_type == "Production Delay":
+                daily_cost    = annual_spend / 365
+                direct_cost   = daily_cost * duration
+                expedite_cost = direct_cost * 0.25
+                total_cost    = direct_cost + expedite_cost
+                prog_impact   = len(apqp[apqp["supplier_id"] == sid_sim])
+                schedule_slip = int(duration * 1.3)
+
+                st.markdown(f"""
+                <div class="kpi-card" style="margin-bottom:0.75rem;">
+                    <div class="kpi-label">Scenario</div>
+                    <div style="font-size:0.9rem; color:#f1f5f9; font-weight:600;">
+                        Production Delay · {sup_sim['name'][:35]} · {duration} days
+                    </div>
+                    <div style="font-size:0.78rem; color:#64748b; margin-top:0.25rem;">
+                        {sup_sim['product_family']} ·
+                        {'⚠ SOLE SOURCE' if is_single else 'Multi-source'} ·
+                        Current risk: {risk_badge(risk_label_sim)}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+                rc1, rc2, rc3 = st.columns(3)
+                with rc1:
+                    st.markdown(kpi_card("Cost Impact", f"€{total_cost/1000:.0f}k",
+                                         delta=f"Incl. €{expedite_cost/1000:.0f}k expedite",
+                                         delta_direction="up"), unsafe_allow_html=True)
+                with rc2:
+                    st.markdown(kpi_card("Schedule Slip", f"{schedule_slip} days",
+                                         delta=f"{prog_impact} programmes affected",
+                                         delta_direction="up"), unsafe_allow_html=True)
+                with rc3:
+                    st.markdown(kpi_card("SOP Risk", f"{prog_impact} progs",
+                                         delta="NPI milestones at risk",
+                                         delta_direction="up" if prog_impact > 0 else "flat"),
+                                unsafe_allow_html=True)
+
+                for action in [
+                    f"⚡ Immediate — issue formal delay notification to customer programme managers ({prog_impact} programmes)",
+                    "📅 7 days — request updated delivery schedule with weekly milestone confirmation",
+                    "📋 14 days — assess expedite options: airfreight, weekend shift, sub-contracting",
+                    "🔍 30 days — root cause review to prevent recurrence; update APQP milestone buffer",
+                ]:
+                    st.markdown(
+                        f'<div class="alert-card amber"><div style="font-size:0.82rem; color:#cbd5e1;">{action}</div></div>',
+                        unsafe_allow_html=True)
+
+            elif scenario_type == "Sole-Source Failure":
+                buffer_days   = 22
+                recovery_days = 180
+
+                st.markdown(f"""
+                <div class="kpi-card" style="margin-bottom:0.75rem;">
+                    <div class="kpi-label">Scenario</div>
+                    <div style="font-size:0.9rem; color:#f1f5f9; font-weight:600;">
+                        Sole-Source Failure · {sup_sim['name'][:35]}
+                    </div>
+                    <div style="font-size:0.78rem; color:#64748b; margin-top:0.25rem;">
+                        {sup_sim['product_family']} · Annual spend: €{annual_spend/1000:.0f}k ·
+                        Current risk: {risk_badge(risk_label_sim)}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+                rc1, rc2, rc3, rc4 = st.columns(4)
+                with rc1:
+                    st.markdown(kpi_card("Buffer Stock", f"{buffer_days} days",
+                                         delta="Estimated coverage",
+                                         delta_direction="up" if buffer_days < 30 else "flat"),
+                                unsafe_allow_html=True)
+                with rc2:
+                    st.markdown(kpi_card("Recovery Timeline", f"{recovery_days} days",
+                                         delta="Alt supplier qualification",
+                                         delta_direction="up"), unsafe_allow_html=True)
+                with rc3:
+                    gap_days = max(0, recovery_days - buffer_days)
+                    st.markdown(kpi_card("Supply Gap", f"{gap_days} days",
+                                         delta="Without emergency action",
+                                         delta_direction="up" if gap_days > 0 else "down"),
+                                unsafe_allow_html=True)
+                with rc4:
+                    spend_at_risk = annual_spend * (recovery_days / 365)
+                    st.markdown(kpi_card("Spend at Risk", f"€{spend_at_risk/1000:.0f}k",
+                                         delta_direction="up"), unsafe_allow_html=True)
+
+                scenarios_compare = {
+                    "No action":         {"supply_days": buffer_days,       "cost_k": 0},
+                    "Emergency stock":   {"supply_days": buffer_days + 45,  "cost_k": int(annual_spend * 0.12 / 1000)},
+                    "Alt supplier fast": {"supply_days": buffer_days + 90,  "cost_k": int(annual_spend * 0.20 / 1000)},
+                    "In-house qualify":  {"supply_days": buffer_days + 180, "cost_k": int(annual_spend * 0.35 / 1000)},
+                }
+                fig_cmp = go.Figure()
+                fig_cmp.add_trace(go.Bar(
+                    name="Supply coverage (days)",
+                    x=list(scenarios_compare.keys()),
+                    y=[v["supply_days"] for v in scenarios_compare.values()],
+                    marker_color="#3b82f6", yaxis="y",
+                ))
+                fig_cmp.add_trace(go.Scatter(
+                    name="Mitigation cost (€k)",
+                    x=list(scenarios_compare.keys()),
+                    y=[v["cost_k"] for v in scenarios_compare.values()],
+                    marker_color="#fb923c", mode="lines+markers",
+                    yaxis="y2",
+                ))
+                fig_cmp.update_layout(
+                    yaxis=dict(title="Supply coverage (days)", gridcolor="#1e2d45"),
+                    yaxis2=dict(title="Cost (€k)", overlaying="y", side="right", gridcolor="#1e2d45"),
+                    legend=dict(orientation="h", y=1.1),
+                    barmode="group",
+                )
+                plotly_dark_layout(fig_cmp, height=260)
+                st.plotly_chart(fig_cmp, use_container_width=True)
+
+                for action in [
+                    "🔴 CRITICAL — VP Operations and Supply Chain Director notification within 24 hours",
+                    f"⚡ 48 hours — emergency buffer stock purchase targeting {buffer_days + 45} days coverage",
+                    f"📋 15 days — dual-sourcing feasibility: identify 3 alternative suppliers in {sup_sim['product_family']}",
+                    "🔧 30 days — engineering assessment: can design be modified to enable alternative sourcing?",
+                    "📅 6 months — target: qualified alternative supplier, first PPAP approved",
+                ]:
+                    st.markdown(
+                        f'<div class="alert-card"><div style="font-size:0.82rem; color:#cbd5e1;">{action}</div></div>',
+                        unsafe_allow_html=True)
+
+            elif scenario_type == "Quality Escape":
+                parts_at_risk = int(annual_spend / 365 * 30 / 15)
+                sort_cost     = parts_at_risk * 2.5
+                scrap_pct     = 0.08
+                scrap_cost    = parts_at_risk * scrap_pct * 15
+                total_cost    = sort_cost + scrap_cost
+
+                st.markdown(f"""
+                <div class="kpi-card" style="margin-bottom:0.75rem;">
+                    <div class="kpi-label">Scenario</div>
+                    <div style="font-size:0.9rem; color:#f1f5f9; font-weight:600;">
+                        Quality Escape · {sup_sim['name'][:35]} · {escape_ppm} PPM
+                    </div>
+                    <div style="font-size:0.78rem; color:#64748b; margin-top:0.25rem;">
+                        {sup_sim['product_family']} · Current risk: {risk_badge(risk_label_sim)}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+                rc1, rc2, rc3, rc4 = st.columns(4)
+                with rc1:
+                    st.markdown(kpi_card("Parts at Risk", f"{parts_at_risk:,}",
+                                         delta="30-day stock estimate",
+                                         delta_direction="up"), unsafe_allow_html=True)
+                with rc2:
+                    st.markdown(kpi_card("Sort Cost", f"€{sort_cost/1000:.1f}k",
+                                         delta="100% inspection labour",
+                                         delta_direction="up"), unsafe_allow_html=True)
+                with rc3:
+                    st.markdown(kpi_card("Est. Scrap", f"€{scrap_cost/1000:.1f}k",
+                                         delta=f"{scrap_pct*100:.0f}% defect rate",
+                                         delta_direction="up"), unsafe_allow_html=True)
+                with rc4:
+                    new_ppm_tier = "RED" if escape_ppm > 500 else "AMBER"
+                    st.markdown(kpi_card("Risk Impact", new_ppm_tier,
+                                         delta=f"From {escape_ppm} PPM escape",
+                                         delta_direction="up"), unsafe_allow_html=True)
+
+                months   = list(range(-3, 7))
+                ppm_base = [max(50, escape_ppm * (0.3 + 0.1 * i)) for i in range(3)]
+                ppm_before = ppm_base + [escape_ppm, escape_ppm, escape_ppm * 0.9, escape_ppm * 0.85, escape_ppm * 0.8, escape_ppm * 0.75, escape_ppm * 0.7]
+                ppm_after  = ppm_base + [escape_ppm, escape_ppm * 0.5, escape_ppm * 0.15, 80, 50, 40, 35]
+
+                fig_ppm = go.Figure()
+                fig_ppm.add_trace(go.Scatter(x=months, y=ppm_before,
+                                              name="Without containment",
+                                              line=dict(color="#f87171", dash="dash")))
+                fig_ppm.add_trace(go.Scatter(x=months, y=ppm_after,
+                                              name="With immediate containment",
+                                              line=dict(color="#34d399")))
+                fig_ppm.add_vline(x=0, line_dash="dot", line_color="#475569",
+                                   annotation_text="Escape detected")
+                fig_ppm.add_hline(y=500, line_dash="dot", line_color="#7f1d1d",
+                                   annotation_text="RED threshold")
+                fig_ppm.add_hline(y=200, line_dash="dot", line_color="#92400e",
+                                   annotation_text="AMBER threshold")
+                fig_ppm.update_layout(xaxis_title="Month (0 = detection)",
+                                       yaxis_title="PPM", legend_orientation="h")
+                plotly_dark_layout(fig_ppm, height=240)
+                st.plotly_chart(fig_ppm, use_container_width=True)
+
+                for action in [
+                    "⚡ 24 hours — 100% sort of all suspect stock at supplier, in transit, and at customer goods-in",
+                    "📋 5 days — issue SCAR; require containment report and interim supply of conforming parts",
+                    "🔍 30 days — root cause analysis (5-Why minimum); corrective action plan with evidence",
+                    f"📅 60 days — effectiveness verification: {escape_ppm // 5} PPM target sustained for 30 days before SCAR closure",
+                ]:
+                    st.markdown(
+                        f'<div class="alert-card"><div style="font-size:0.82rem; color:#cbd5e1;">{action}</div></div>',
+                        unsafe_allow_html=True)
 
         else:
             st.markdown("""

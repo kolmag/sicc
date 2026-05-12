@@ -156,7 +156,7 @@ Generated deterministically (seed=42) with `generate_supplier_data.py`.
 | `suppliers` | 1,200 | Master — 20 cols, 10 product families, 8 archetypes, 21 countries |
 | `supplier_kpis` | 43,200 | 36-month time series — PPM, OTD, audit score, SCAR count, risk label |
 | `claims` | 20,886 | 8D-structured, QR/PD/CA/CI phases, chargeback amount |
-| `apqp_projects` | 1,431 | Full 9-phase gate per PQA/U-Shin schema |
+| `apqp_projects` | 1,431 | Full 9-phase gate per internal APQP schema |
 | `audits` | 6,581 | ~5.5 audits per supplier, finding types |
 | `risk_scores` | 1,200 | Composite score, 3-tier label, recommended action |
 | `external_events` | 913 | ESG, sanctions, geopolitical, regulatory, financial |
