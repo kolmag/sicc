@@ -269,7 +269,30 @@ def load_all_data():
         tables["supplier_kpis"]["year_month"] = pd.to_datetime(
             tables["supplier_kpis"]["year_month"])
 
+    for _tbl, _col in [
+        ("claims",          "creation_date"),
+        ("audits",          "audit_date"),
+        ("apqp_projects",   "customer_sop_date"),
+        ("apqp_projects",   "supplier_sop_date"),
+        ("external_events", "event_date"),
+        ("external_events", "response_due_date"),
+    ]:
+        if not tables[_tbl].empty and _col in tables[_tbl].columns:
+            tables[_tbl][_col] = pd.to_datetime(tables[_tbl][_col], errors="coerce")
+
     return tables
+
+@st.cache_resource(show_spinner=False)
+def get_kb_chunk_count() -> int:
+    """Return live ChromaDB chunk count; falls back to last-known value."""
+    try:
+        import chromadb
+        _client = chromadb.PersistentClient(
+            path=str(CHROMA_DB_PATH), settings=CHROMA_SETTINGS)
+        return _client.get_collection("supplier_kb").count()
+    except Exception:
+        return 264
+
 
 @st.cache_resource
 def load_ml_artefacts():
@@ -542,6 +565,14 @@ def make_ml_metrics_html(ml) -> str:
         </div>"""
     html += "</div>"
     return html
+
+
+def get_ml_pred_label(ml, supplier_id: str) -> str | None:
+    """Return the ML-predicted risk label string, or None if unavailable."""
+    if ml is None or supplier_id not in ml["supplier_ids"]:
+        return None
+    idx = ml["supplier_ids"].index(supplier_id)
+    return ml["label_order"][ml["y_pred"][idx]]
 
 
 def ml_predicted_badge(ml, supplier_id: str) -> str:
@@ -926,23 +957,43 @@ if page == "Executive Portfolio":
 
     with col_right:
         st.markdown('<div class="section-header">Top 10 Risk Suppliers</div>', unsafe_allow_html=True)
-        top_risk = filtered_risk.drop(
-            columns=["product_family"], errors="ignore"
-        ).merge(
+        st.markdown(
+            '<div style="font-size:0.72rem; color:#475569; margin:-0.3rem 0 0.6rem 0;">'
+            'Ranked by rule-based composite score. '
+            '<span style="font-family:\'DM Mono\',monospace;">ML:</span> badge = RandomForest prediction. '
+            '<span style="color:#fb923c; font-weight:600;">⚠ diverges</span> '
+            '= models disagree — investigate before acting.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        top_risk = filtered_risk[
+            filtered_risk["risk_label"].isin(["red", "amber"])
+        ].drop(columns=["product_family"], errors="ignore").merge(
             filtered_suppliers[["supplier_id", "name", "product_family"]], on="supplier_id"
-        ).sort_values("composite_risk_score").head(10)
+        ).sort_values(
+            ["risk_label", "composite_risk_score"],
+            ascending=[True, False],   # red sorts before amber ("red" < "amber" alphabetically = False, so True keeps red first)
+            key=lambda col: col.map({"red": 0, "amber": 1}) if col.name == "risk_label" else col,
+        ).head(10)
 
         for _, row in top_risk.iterrows():
-            score = row["composite_risk_score"]
-            label = row["risk_label"]
-            color = risk_color(label)
-            ml_html = ml_predicted_badge(ml, row["supplier_id"]) if ml else ""
+            score    = row["composite_risk_score"]
+            label    = row["risk_label"]
+            color    = risk_color(label)
+            ml_label = get_ml_pred_label(ml, row["supplier_id"]) if ml else None
+            ml_html  = ml_predicted_badge(ml, row["supplier_id"]) if ml else ""
+            diverges = ml_label is not None and ml_label != label
+            diverge_html = (
+                '<span style="font-size:0.68rem; color:#fb923c; font-weight:600; '
+                'margin-left:0.4rem;">⚠ diverges</span>'
+                if diverges else ""
+            )
             st.markdown(f"""
             <div class="alert-card {'amber' if label=='amber' else ('green' if label=='green' else '')}">
                 <div style="font-size:0.78rem; font-weight:600; color:#f1f5f9;">{row['name'][:32]}</div>
                 <div style="font-size:0.7rem; color:#64748b;">{row['product_family']}</div>
                 <div style="display:flex; justify-content:space-between; margin-top:0.3rem; align-items:center;">
-                    <div>{risk_badge(label)} {ml_html}</div>
+                    <div>{risk_badge(label)} {ml_html}{diverge_html}</div>
                     <span style="font-family:'DM Mono',monospace; font-size:0.78rem; color:{color};">{score:.0f}/100</span>
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -963,7 +1014,7 @@ if page == "Executive Portfolio":
         columns=["product_family"], errors="ignore"
     ).merge(
         filtered_suppliers[["supplier_id", "name", "product_family", "country"]], on="supplier_id"
-    ).sort_values("composite_risk_score").head(3)
+    ).sort_values("composite_risk_score", ascending=False).head(3)
     top_names = ", ".join(top_red["name"].str[:20].tolist()) if len(top_red) > 0 else "none identified"
 
     with st.spinner("Generating executive brief..."):
@@ -1528,18 +1579,27 @@ elif page == "Risk Scoring Engine":
 
     with col_table:
         top20 = display.head(20)
+        # Normalize all KPIs to 0–100 quality score (100 = best, 0 = worst)
+        # PPM: 0 PPM → 100, 2500+ PPM → 0
+        # OTD: 100% → 100, 60% → 0  (linear over 60–100 range)
+        # Audit: raw 0–100 (already normalised)
+        _ppm_score   = (1 - (top20["avg_ppm_3m"].clip(0, 2500) / 2500)) * 100
+        _otd_score   = ((top20["avg_otd_3m"].clip(60, 100) - 60) / 40) * 100
+        _audit_score = top20["avg_audit_score_3m"].clip(0, 100)
         fig = go.Figure()
-        fig.add_trace(go.Bar(name="PPM", x=top20["name"].str[:18],
-                             y=(100 - top20["avg_ppm_3m"] / 25).clip(0, 100),
+        fig.add_trace(go.Bar(name="PPM Quality (0=2500+, 100=0 PPM)",
+                             x=top20["name"].str[:18], y=_ppm_score,
                              marker_color="#f87171", opacity=0.85))
-        fig.add_trace(go.Bar(name="OTD", x=top20["name"].str[:18],
-                             y=((top20["avg_otd_3m"] - 80) * 5).clip(0, 100),
+        fig.add_trace(go.Bar(name="OTD Score (0=60%, 100=100%)",
+                             x=top20["name"].str[:18], y=_otd_score,
                              marker_color="#fb923c", opacity=0.85))
-        fig.add_trace(go.Bar(name="Audit", x=top20["name"].str[:18],
-                             y=top20["avg_audit_score_3m"],
+        fig.add_trace(go.Bar(name="Audit Score (raw 0–100)",
+                             x=top20["name"].str[:18], y=_audit_score,
                              marker_color="#60a5fa", opacity=0.85))
-        fig.update_layout(barmode="group", xaxis_tickangle=-40, legend_orientation="h")
-        plotly_dark_layout(fig, height=240)
+        fig.update_layout(barmode="group", xaxis_tickangle=-40,
+                          yaxis_title="Quality Score (100 = best)",
+                          legend=dict(orientation="h", y=1.12, font_size=10))
+        plotly_dark_layout(fig, height=260)
         st.plotly_chart(fig, use_container_width=True)
 
         # Supplier table
@@ -1741,7 +1801,7 @@ elif page == "Early Warning Agent":
         events=events,
         apqp=apqp,
         supplier_ids=filtered_ids,
-        top_n=75,
+        top_n=min(len(filtered_ids), 200),
     )
 
     alert_df = pd.DataFrame([a.model_dump() for a in alerts])
@@ -1762,10 +1822,6 @@ elif page == "Early Warning Agent":
         )
         st.markdown(kpi_card("Single-Source Exposure", f"{single_source_n:,}", delta_direction="up" if single_source_n else "flat"), unsafe_allow_html=True)
 
-    if alert_df.empty:
-        st.info("No deteriorating suppliers detected for the current filters.")
-        st.stop()
-
     fc1, fc2 = st.columns([1, 1])
     with fc1:
         level_filter = st.multiselect(
@@ -1780,6 +1836,10 @@ elif page == "Early Warning Agent":
             default=[],
             placeholder="All risk tiers",
         )
+
+    if alert_df.empty:
+        st.info("No deteriorating suppliers detected for the current filters.")
+        st.stop()
 
     filtered_alerts = alert_df.copy()
     if level_filter:
@@ -1852,21 +1912,33 @@ elif page == "SCAR/CAPA Triage":
 
     if mode == "Existing claim":
         claim_pool = claims[claims["supplier_id"].isin(filtered_ids)].copy()
+        # Default to open/in-progress claims only
+        open_statuses = ["Open", "In Progress", "Under Investigation", "Pending"]
+        status_options = sorted(claim_pool["status"].dropna().unique())
+        default_open = [s for s in open_statuses if s in status_options]
+        claim_status_filter = st.multiselect(
+            "Claim status", status_options,
+            default=default_open or status_options[:1],
+            key="scar_claim_status",
+        )
+        if claim_status_filter:
+            claim_pool = claim_pool[claim_pool["status"].isin(claim_status_filter)]
         if claim_pool.empty:
-            st.info("No claims available for the current filters.")
+            st.info("No claims match the selected status filter.")
             st.stop()
 
+        claim_pool = claim_pool.sort_values("creation_date", ascending=False)
         claim_pool["display"] = (
             claim_pool["incident_number"].astype(str)
-            + " - "
+            + " | "
             + claim_pool["supplier_name"].astype(str).str[:34]
-            + " - "
+            + " | "
             + claim_pool["category"].astype(str)
         )
-        claim_pool = claim_pool.sort_values("creation_date", ascending=False)
-        selected_claim = st.selectbox("Select claim", claim_pool["display"].tolist())
-        incident = selected_claim.split(" - ")[0].strip()
-        claim = claim_pool[claim_pool["incident_number"] == incident].iloc[0]
+        # Build lookup dict keyed by display string to avoid fragile string splitting
+        _claim_map = {row["display"]: row for _, row in claim_pool.iterrows()}
+        selected_claim = st.selectbox("Select claim", list(_claim_map.keys()))
+        claim = _claim_map[selected_claim]
         sid = claim["supplier_id"]
     else:
         selected_supplier = st.selectbox("Select supplier", supplier_options["display"].tolist())
@@ -1881,6 +1953,8 @@ elif page == "SCAR/CAPA Triage":
     sup_audits = audits[audits["supplier_id"] == sid]
     sup_events = events[events["supplier_id"] == sid]
 
+    _triage_key = f"scar_triage_{sid}_{mode}_{selected_claim if mode == 'Existing claim' else ''}"
+
     if mode == "Manual issue":
         mc1, mc2 = st.columns([2, 1])
         with mc1:
@@ -1894,29 +1968,43 @@ elif page == "SCAR/CAPA Triage":
             suspected_parts = st.number_input("Suspected parts", min_value=0, value=100, step=10)
         with nc3:
             recurrent = st.checkbox("Recurring issue", value=False)
-        triage = triage_manual_issue(
-            supplier=sup,
-            risk_row=risk_row,
-            issue_description=issue_description,
-            bad_parts=int(bad_parts),
-            suspected_parts=int(suspected_parts),
-            detected_at_customer=detected_at_customer,
-            recurrent=recurrent,
-            supplier_claims=sup_claims,
-            supplier_kpis=sup_kpis,
-            supplier_audits=sup_audits,
-            supplier_events=sup_events,
-        )
-    else:
-        triage = triage_claim(
-            claim=claim,
-            supplier=sup,
-            risk_row=risk_row,
-            supplier_claims=sup_claims,
-            supplier_kpis=sup_kpis,
-            supplier_audits=sup_audits,
-            supplier_events=sup_events,
-        )
+
+    if st.button("Run Triage", type="primary"):
+        with st.spinner("Triaging issue..."):
+            if mode == "Manual issue":
+                _result = triage_manual_issue(
+                    supplier=sup,
+                    risk_row=risk_row,
+                    issue_description=issue_description,
+                    bad_parts=int(bad_parts),
+                    suspected_parts=int(suspected_parts),
+                    detected_at_customer=detected_at_customer,
+                    recurrent=recurrent,
+                    supplier_claims=sup_claims,
+                    supplier_kpis=sup_kpis,
+                    supplier_audits=sup_audits,
+                    supplier_events=sup_events,
+                )
+            else:
+                _result = triage_claim(
+                    claim=claim,
+                    supplier=sup,
+                    risk_row=risk_row,
+                    supplier_claims=sup_claims,
+                    supplier_kpis=sup_kpis,
+                    supplier_audits=sup_audits,
+                    supplier_events=sup_events,
+                )
+            st.session_state[_triage_key] = _result.model_dump()
+
+    if _triage_key not in st.session_state:
+        st.info("Select a claim or enter an issue above, then click **Run Triage**.")
+        st.stop()
+
+    triage = type("_T", (), st.session_state[_triage_key])()  # namespace access
+    import types as _types
+    triage = _types.SimpleNamespace(**st.session_state[_triage_key])
+    # Restore list/dict fields (SimpleNamespace already has them from model_dump)
 
     tc1, tc2, tc3, tc4 = st.columns(4)
     with tc1:
@@ -1974,6 +2062,12 @@ elif page == "SCAR/CAPA Triage":
         st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
         st.markdown(", ".join(f"`{doc}`" for doc in triage.source_documents))
 
+    import json as _json
+    _triage_export = _json.dumps(st.session_state[_triage_key], indent=2, default=str)
+    _fname = f"scar_triage_{getattr(triage, 'incident_number', sid).replace('/', '-')}.json"
+    st.download_button("⬇ Download Triage Report", data=_triage_export,
+                       file_name=_fname, mime="application/json")
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # PAGE 5: APQP READINESS AGENT
@@ -1997,19 +2091,23 @@ elif page == "APQP Readiness Agent":
     if status_filter:
         project_pool = project_pool[project_pool["status"].isin(status_filter)]
 
+    if project_pool.empty:
+        st.info("No APQP projects match the selected status filter.")
+        st.stop()
+
     project_pool["display"] = (
         project_pool["project_id"].astype(str)
-        + " - "
+        + " | "
         + project_pool["supplier_name"].astype(str).str[:34]
-        + " - "
+        + " | "
         + project_pool["project_type"].astype(str)
-        + " - "
+        + " | "
         + project_pool["status"].astype(str)
     )
     project_pool = project_pool.sort_values(["is_delayed", "completion_pct"], ascending=[False, True])
-    selected_project = st.selectbox("Select APQP project", project_pool["display"].tolist())
-    project_id = selected_project.split(" - ")[0].strip()
-    project = project_pool[project_pool["project_id"] == project_id].iloc[0]
+    _proj_map = {row["display"]: row for _, row in project_pool.iterrows()}
+    selected_project = st.selectbox("Select APQP project", list(_proj_map.keys()))
+    project = _proj_map[selected_project]
     sid = project["supplier_id"]
 
     sup = suppliers[suppliers["supplier_id"] == sid].iloc[0]
@@ -2018,13 +2116,28 @@ elif page == "APQP Readiness Agent":
     sup_claims = claims[claims["supplier_id"] == sid]
     sup_events = events[events["supplier_id"] == sid]
 
-    decision = assess_apqp_launch_readiness(
-        project=project,
-        supplier=sup,
-        risk_row=risk_row,
-        supplier_claims=sup_claims,
-        supplier_events=sup_events,
-    )
+    _apqp_key = f"apqp_decision_{project['project_id']}"
+
+    if st.button("Assess Readiness", type="primary"):
+        with st.spinner("Assessing launch readiness..."):
+            _dec = assess_apqp_launch_readiness(
+                project=project,
+                supplier=sup,
+                risk_row=risk_row,
+                supplier_claims=sup_claims,
+                supplier_events=sup_events,
+            )
+            st.session_state[_apqp_key] = _dec.model_dump()
+
+    if _apqp_key not in st.session_state:
+        st.info("Select a project above, then click **Assess Readiness**.")
+        st.stop()
+
+    import types as _types
+    decision = _types.SimpleNamespace(**st.session_state[_apqp_key])
+    decision.gate_findings = [
+        _types.SimpleNamespace(**gf) for gf in (st.session_state[_apqp_key].get("gate_findings") or [])
+    ]
 
     dc1, dc2, dc3, dc4 = st.columns(4)
     with dc1:
@@ -2066,7 +2179,7 @@ elif page == "APQP Readiness Agent":
 
     st.markdown('<div class="section-header">Gate Findings</div>', unsafe_allow_html=True)
     if decision.gate_findings:
-        gate_df = pd.DataFrame([finding.model_dump() for finding in decision.gate_findings])
+        gate_df = pd.DataFrame([vars(f) for f in decision.gate_findings])
         gate_df.columns = ["Gate", "Status", "Issue", "Required Action"]
         st.dataframe(gate_df, use_container_width=True, hide_index=True)
     else:
@@ -2100,7 +2213,7 @@ elif page == "Continuity Agent":
         events=events,
         apqp=apqp,
         supplier_ids=filtered_ids,
-        top_n=75,
+        top_n=min(len(filtered_ids), 200),
     )
     plan_df = pd.DataFrame([p.model_dump() for p in plans])
 
@@ -2202,6 +2315,14 @@ elif page == "Continuity Agent":
         st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
         st.markdown(", ".join(f"`{doc}`" for doc in plan.source_documents))
 
+    import json as _json
+    _cont_export = _json.dumps(
+        next(p for p in plans if p.supplier_id == selected_id).model_dump(),
+        indent=2, default=str)
+    st.download_button("⬇ Download Continuity Plan", data=_cont_export,
+                       file_name=f"continuity_plan_{selected_id}.json",
+                       mime="application/json")
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # PAGE 7: AUDIT PLANNING AGENT
@@ -2219,7 +2340,7 @@ elif page == "Audit Planning Agent":
         audits=audits,
         events=events,
         supplier_ids=filtered_ids,
-        top_n=75,
+        top_n=min(len(filtered_ids), 200),
     )
     audit_df = pd.DataFrame([p.model_dump() for p in audit_plans])
 
@@ -2262,11 +2383,25 @@ elif page == "Audit Planning Agent":
         filtered_audits = filtered_audits[filtered_audits["audit_type"].isin(type_filter)]
 
     st.markdown('<div class="section-header">Audit Trigger Watchlist</div>', unsafe_allow_html=True)
+    import re as _re
+    from datetime import date as _date, timedelta as _td
+    def _parse_target_date(timeline: str) -> str:
+        _m = _re.search(r"(\d+)\s+day", timeline, _re.I)
+        if _m:
+            return (_date.today() + _td(days=int(_m.group(1)))).isoformat()
+        _m = _re.search(r"(\d+)\s+week", timeline, _re.I)
+        if _m:
+            return (_date.today() + _td(weeks=int(_m.group(1)))).isoformat()
+        _m = _re.search(r"(\d+)\s+month", timeline, _re.I)
+        if _m:
+            return (_date.today() + _td(days=int(_m.group(1)) * 30)).isoformat()
+        return "—"
     table = filtered_audits[[
         "supplier_name", "supplier_id", "audit_type", "urgency",
         "schedule_timeline", "owner"
     ]].copy()
-    table.columns = ["Supplier", "ID", "Audit Type", "Urgency", "Timeline", "Owner"]
+    table["target_date"] = table["schedule_timeline"].apply(_parse_target_date)
+    table.columns = ["Supplier", "ID", "Audit Type", "Urgency", "Timeline", "Owner", "Target Date"]
     st.dataframe(table, use_container_width=True, height=340, hide_index=True)
 
     selected_options = [
@@ -2319,6 +2454,14 @@ elif page == "Audit Planning Agent":
 
         st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
         st.markdown(", ".join(f"`{doc}`" for doc in plan.source_documents))
+
+    import json as _json
+    _audit_export = _json.dumps(
+        next(p for p in audit_plans if p.supplier_id == selected_id).model_dump(),
+        indent=2, default=str)
+    st.download_button("⬇ Download Audit Plan", data=_audit_export,
+                       file_name=f"audit_plan_{selected_id}.json",
+                       mime="application/json")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2403,7 +2546,9 @@ elif page == "Supplier Profile":
                           color_discrete_sequence=["#34d399"])
             fig.add_hline(y=95, line_dash="dot", line_color="#475569")
             fig.add_hline(y=90, line_dash="dot", line_color="#7f1d1d")
-            fig.update_layout(xaxis_title="", yaxis_title="OTD %", yaxis_range=[80, 100])
+            _otd_min = max(0, sup_kpis["otd_pct"].min() - 3)
+            fig.update_layout(xaxis_title="", yaxis_title="OTD %",
+                              yaxis_range=[min(_otd_min, 80), 101])
             plotly_dark_layout(fig, height=200)
             st.plotly_chart(fig, use_container_width=True)
         with c3:
@@ -2411,7 +2556,9 @@ elif page == "Supplier Profile":
                           color_discrete_sequence=["#60a5fa"])
             fig.add_hline(y=75, line_dash="dot", line_color="#475569")
             fig.add_hline(y=60, line_dash="dot", line_color="#7f1d1d")
-            fig.update_layout(xaxis_title="", yaxis_title="Audit Score", yaxis_range=[40, 100])
+            _aud_min = max(0, sup_kpis["audit_score"].min() - 5)
+            fig.update_layout(xaxis_title="", yaxis_title="Audit Score",
+                              yaxis_range=[min(_aud_min, 40), 101])
             plotly_dark_layout(fig, height=200)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -2644,7 +2791,8 @@ elif page == "APQP / NPI Tracker":
         st.markdown(kpi_card("Completed", f"{len(completed):,}"), unsafe_allow_html=True)
     with c4:
         avg_completion = apqp_merged["completion_pct"].mean()
-        st.markdown(kpi_card("Avg Completion", f"{avg_completion:.0f}%"), unsafe_allow_html=True)
+        avg_str = f"{avg_completion:.0f}%" if not pd.isna(avg_completion) else "—"
+        st.markdown(kpi_card("Avg Completion", avg_str), unsafe_allow_html=True)
 
     st.markdown("---")
     col_l, col_r = st.columns([3, 1])
@@ -2653,7 +2801,12 @@ elif page == "APQP / NPI Tracker":
         st.markdown('<div class="section-header">Programme List</div>', unsafe_allow_html=True)
         status_filter = st.selectbox("Filter by status",
                                      ["All", "Active", "Delayed", "Completed", "On Hold"])
-        table_data = apqp_merged if status_filter == "All" else apqp_merged[apqp_merged["status"] == status_filter]
+        if status_filter == "All":
+            table_data = apqp_merged
+        elif status_filter == "Delayed":
+            table_data = apqp_merged[apqp_merged["is_delayed"].isin([1, True])]
+        else:
+            table_data = apqp_merged[apqp_merged["status"] == status_filter]
         table = table_data[[
             "project_id", "name", "project_type", "status",
             "customer_sop_date", "completion_pct", "is_delayed", "product_family"
@@ -2749,13 +2902,27 @@ elif page == "APQP / NPI Tracker":
             color_matrix = []
  
             y_labels = []
+            _n_phases = len(phase_keys)
             for _, row in matrix_df.iterrows():
                 z_row    = []
                 text_row = []
                 col_row  = []
-                for pk in phase_keys:
-                    col_name = f"{pk}_status"
-                    status = row.get(col_name, "Not Started") or "Not Started"
+                # Derive phase completion from completion_pct + is_delayed
+                # since individual phase status columns are not stored in the DB.
+                _pct = float(row["completion_pct"]) if row["completion_pct"] <= 1 \
+                       else float(row["completion_pct"]) / 100
+                _n_done   = max(0, min(_n_phases, round(_pct * _n_phases)))
+                _is_delay = bool(row["is_delayed"])
+                _is_complete = row.get("status", "") == "Completed"
+                for i, pk in enumerate(phase_keys):
+                    if _is_complete or i < _n_done - 1:
+                        status = "Validated"
+                    elif i == _n_done - 1 and _n_done > 0:
+                        status = "Overdue" if _is_delay else "Submitted"
+                    elif i == _n_done:
+                        status = "Overdue" if _is_delay else "In Progress"
+                    else:
+                        status = "Not Started"
                     z_row.append(STATUS_SCORE.get(status, 0))
                     text_row.append(status[:3].upper() if status != "Not Started" else "—")
                     col_row.append(STATUS_COLOR.get(status, "#1e2d45"))
@@ -2819,6 +2986,65 @@ elif page == "APQP / NPI Tracker":
                 + "</div>",
                 unsafe_allow_html=True,
             )
+
+    # ── SOP Timeline Gantt ─────────────────────────────────────────────────────
+    with st.expander("📅 SOP Timeline — Supplier vs Customer dates", expanded=False):
+        _gantt_df = apqp_merged[
+            apqp_merged["status"].isin(["Active", "On Hold"]) &
+            apqp_merged["supplier_sop_date"].notna() &
+            apqp_merged["customer_sop_date"].notna()
+        ].copy().head(30)
+        if _gantt_df.empty:
+            st.info("No active programmes with SOP dates available.")
+        else:
+            _gantt_fig = go.Figure()
+            for _, _row in _gantt_df.iterrows():
+                _color = "#f87171" if bool(_row["is_delayed"]) else "#34d399"
+                _label = f"{_row['name'][:22]} · {_row['project_id']}"
+                # Supplier target bar
+                _gantt_fig.add_trace(go.Bar(
+                    name="Supplier SOP", orientation="h",
+                    x=[(_row["supplier_sop_date"] - _row["supplier_sop_date"]).days + 1],
+                    base=[_row["supplier_sop_date"]],
+                    y=[_label],
+                    marker_color=_color, width=0.4,
+                    showlegend=False,
+                ))
+                # Customer deadline marker
+                _gantt_fig.add_vline(
+                    x=_row["customer_sop_date"].timestamp() * 1000,
+                    line_dash="dot", line_color="#60a5fa", line_width=1,
+                )
+            # Build as scatter timeline instead for clarity
+            _gantt_fig = go.Figure()
+            _labels, _sup_dates, _cust_dates, _colors = [], [], [], []
+            for _, _row in _gantt_df.iterrows():
+                _labels.append(f"{_row['name'][:22]} · {_row['project_id']}")
+                _sup_dates.append(_row["supplier_sop_date"])
+                _cust_dates.append(_row["customer_sop_date"])
+                _colors.append("#f87171" if bool(_row["is_delayed"]) else "#34d399")
+            _gantt_fig.add_trace(go.Scatter(
+                x=_sup_dates, y=_labels, mode="markers",
+                name="Supplier SOP",
+                marker=dict(color=_colors, size=12, symbol="diamond"),
+            ))
+            _gantt_fig.add_trace(go.Scatter(
+                x=_cust_dates, y=_labels, mode="markers",
+                name="Customer SOP deadline",
+                marker=dict(color="#60a5fa", size=10, symbol="line-ns-open"),
+            ))
+            for _sup, _cust, _lbl in zip(_sup_dates, _cust_dates, _labels):
+                _gantt_fig.add_shape(type="line",
+                    x0=_sup, x1=_cust, y0=_lbl, y1=_lbl,
+                    line=dict(color="#475569", width=1.5, dash="dot"))
+            _gantt_fig.update_layout(
+                xaxis_title="Date", yaxis_title="",
+                legend=dict(orientation="h", y=1.08),
+                yaxis=dict(autorange="reversed"),
+            )
+            plotly_dark_layout(_gantt_fig, height=max(280, len(_gantt_df) * 30 + 80))
+            st.plotly_chart(_gantt_fig, use_container_width=True)
+            st.caption("🔴 Delayed  🟢 On track  🔵 Customer SOP deadline")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2970,11 +3196,12 @@ elif page == "Supplier Q&A Agent":
                                     </span>
                                 </div>
                             </div>
-                        </div>""", unsafe_allow_html=True)
-                        st.markdown(result.answer)
-                        st.markdown(f"""
-                        <div style="margin-top:0.5rem; font-size:0.7rem; color:#475569;">
-                            Sources: {sources_html}
+                            <div style="font-size:0.85rem; color:#cbd5e1; line-height:1.6;">
+                                {result.answer}
+                            </div>
+                            <div style="margin-top:0.75rem; font-size:0.7rem; color:#475569;">
+                                Sources: {sources_html}
+                            </div>
                         </div>""", unsafe_allow_html=True)
 
                 except Exception as e:
@@ -2991,6 +3218,9 @@ elif page == "Supplier Q&A Agent":
                                 "region", "single_source", "spend_tier",
                                 "qualification_status", "certification"]], on="supplier_id")
 
+                # Apply sidebar filters first so all intent branches respect them
+                result_df = result_df[result_df["supplier_id"].isin(filtered_ids)]
+
                 if filter_family:
                     result_df = result_df[result_df["product_family"].isin(filter_family)]
                 if filter_risk:
@@ -2998,8 +3228,7 @@ elif page == "Supplier Q&A Agent":
                 if filter_region:
                     result_df = result_df[result_df["region"].isin(filter_region)]
 
-                with st.spinner("Analysing query..."):
-                    intent = classify_portfolio_intent(query)
+                intent = classify_portfolio_intent(query)
 
                 answer_text = ""
                 show_df     = None
@@ -3026,11 +3255,25 @@ elif page == "Supplier Q&A Agent":
                     show_df   = result_df[result_df["supplier_id"].isin(audit_sup)].sort_values("composite_risk_score")
                     answer_text = f"Found **{len(show_df)} suppliers** with **{finding}** audit findings."
 
+                elif intent["intent"] == "claim_categories":
+                    _family   = intent.get("product_family")
+                    _cl_scope = claims[claims["supplier_id"].isin(filtered_ids)]
+                    if _family:
+                        _cl_scope = _cl_scope[_cl_scope["product_family"] == _family]
+                    _cat_counts = (
+                        _cl_scope.groupby("category").size()
+                        .reset_index(name="count")
+                        .sort_values("count", ascending=False)
+                    )
+                    show_df = _cat_counts
+                    _fam_str = f" for {_family} suppliers" if _family else ""
+                    answer_text = f"Top {len(show_df)} recurring claim categories{_fam_str} across {len(_cl_scope):,} claims."
+
                 elif intent["intent"] == "capa_events":
                     capa_needed = events[
-                        (events["requires_capa"] == True) &
-                        (events["capa_linked"] == False) &
-                        (events["status"].isin(["Open", "Under Review"]))
+                        events["requires_capa"].isin([True, 1]) &
+                        ~events["capa_linked"].isin([True, 1]) &
+                        events["status"].isin(["Open", "Under Review"])
                     ]["supplier_id"].unique()
                     show_df = result_df[result_df["supplier_id"].isin(capa_needed)].sort_values("composite_risk_score")
                     answer_text = f"Found **{len(show_df)} suppliers** with open alerts and no linked CAPA."
@@ -3086,7 +3329,7 @@ elif page == "Supplier Q&A Agent":
                 border:1px solid #1e2d45; border-radius:8px;">
         ⬡ <strong>Two-layer Q&A.</strong>
         Portfolio Data mode queries structured supplier KPIs, risk scores, audits, and events directly from SQLite.
-        Knowledge Base mode uses hybrid RAG (BM25 + embedding + RRF) over {264} KB chunks
+        Knowledge Base mode uses hybrid RAG (BM25 + embedding + RRF) over {get_kb_chunk_count()} KB chunks
         (16 supplier quality documents) via ChromaDB · OSS-120B generator · OSS-20B groundedness checker.
     </div>""", unsafe_allow_html=True)
 
@@ -3143,7 +3386,8 @@ elif page == "What-If Simulator":
                 direct_cost   = daily_cost * duration
                 expedite_cost = direct_cost * 0.35
                 total_cost    = direct_cost + expedite_cost
-                prog_impact   = len(apqp[apqp["supplier_id"] == sid_sim])
+                _active_apqp  = apqp[(apqp["supplier_id"] == sid_sim) & (~apqp["status"].isin(["Completed", "Cancelled"]))]
+                prog_impact   = len(_active_apqp)
                 risk_delta    = min(35, (duration / 30) * 12)
                 new_risk_score = min(100, risk_score_sim + risk_delta)
 
@@ -3203,6 +3447,44 @@ elif page == "What-If Simulator":
                         <div style="font-size:0.82rem; color:#cbd5e1; margin-top:0.2rem;">{action}</div>
                     </div>""", unsafe_allow_html=True)
 
+                # Cost escalation chart — shows line-down penalty kicking in after buffer exhausted
+                st.markdown('<div class="section-header">Cost Escalation Timeline</div>',
+                            unsafe_allow_html=True)
+                _buf_days = {"A": 35, "B": 21, "C": 14}.get(str(sup_sim["spend_tier"]), 21)
+                _ld_mult  = 5.0 if is_single else 2.5  # line-down penalty multiplier
+                _plot_end = duration + 45
+                _step     = max(1, _plot_end // 14)
+                _day_pts  = sorted(set(
+                    [0, _buf_days, duration, _plot_end]
+                    + list(range(0, _plot_end + _step, _step))
+                ))
+                _cum_no_mit, _cum_mit = [], []
+                for _d in _day_pts:
+                    # No mitigation: normal cost until buffer exhausted, then line-down penalty
+                    if _d <= _buf_days:
+                        _c_no = daily_cost * _d
+                    else:
+                        _c_no = daily_cost * _buf_days + daily_cost * _ld_mult * (_d - _buf_days)
+                    # With emergency sourcing: 1.35× expedite premium during outage, normal after
+                    _c_mit = daily_cost * 1.35 * min(_d, duration) + daily_cost * max(0, _d - duration)
+                    _cum_no_mit.append(_c_no / 1000)
+                    _cum_mit.append(_c_mit / 1000)
+                fig_ot = go.Figure()
+                fig_ot.add_trace(go.Scatter(x=_day_pts, y=_cum_no_mit, name="No mitigation",
+                                             line=dict(color="#f87171", dash="dash")))
+                fig_ot.add_trace(go.Scatter(x=_day_pts, y=_cum_mit, name="With emergency sourcing",
+                                             line=dict(color="#34d399")))
+                fig_ot.add_vline(x=_buf_days, line_dash="dot", line_color="#fb923c",
+                                  annotation_text="Buffer exhausted")
+                if duration > _buf_days:
+                    fig_ot.add_vline(x=duration, line_dash="dot", line_color="#475569",
+                                      annotation_text="Supplier resumes")
+                fig_ot.update_layout(xaxis_title="Days from outage start",
+                                      yaxis_title="Cumulative cost (€k)",
+                                      legend=dict(orientation="h", y=1.1))
+                plotly_dark_layout(fig_ot, height=240)
+                st.plotly_chart(fig_ot, use_container_width=True)
+
             elif scenario_type == "Cost Increase":
                 cost_impact = annual_spend * (cost_pct / 100)
                 st.markdown(f"""
@@ -3232,14 +3514,45 @@ elif page == "What-If Simulator":
                         f'<div class="alert-card amber"><div style="font-size:0.82rem; color:#cbd5e1;">{action}</div></div>',
                         unsafe_allow_html=True)
 
+                # 3-year spend projection chart
+                st.markdown('<div class="section-header">3-Year Spend Projection</div>',
+                            unsafe_allow_html=True)
+                _years  = ["Year 1", "Year 2", "Year 3"]
+                _base_k = annual_spend / 1000
+                # Unmitigated: full increase persists all 3 years
+                _inc_k  = [annual_spend * (1 + cost_pct / 100) / 1000] * 3
+                # Mitigated: Year 1 full (too late), Year 2 renegotiation achieves 50% offset,
+                #            Year 3 resourcing alternative achieves 80% offset
+                _mit_k  = [
+                    annual_spend * (1 + cost_pct / 100) / 1000,
+                    annual_spend * (1 + cost_pct / 100 * 0.50) / 1000,
+                    annual_spend * (1 + cost_pct / 100 * 0.20) / 1000,
+                ]
+                fig_ci = go.Figure()
+                fig_ci.add_trace(go.Bar(name="Baseline", x=_years,
+                                         y=[_base_k] * 3, marker_color="#3b82f6"))
+                fig_ci.add_trace(go.Bar(name="Unmitigated increase", x=_years,
+                                         y=_inc_k, marker_color="#f87171"))
+                fig_ci.add_trace(go.Bar(name="With renegotiation / resourcing", x=_years,
+                                         y=_mit_k, marker_color="#34d399"))
+                fig_ci.update_layout(barmode="group", xaxis_title="",
+                                      yaxis_title="Annual spend (€k)",
+                                      legend=dict(orientation="h", y=1.1))
+                plotly_dark_layout(fig_ci, height=240)
+                st.plotly_chart(fig_ci, use_container_width=True)
+
             elif scenario_type == "Region Disruption":
-                affected      = suppliers[suppliers["region"] == region_sel]
-                affected_risk = risk_scores[risk_scores["supplier_id"].isin(affected["supplier_id"])]
-                affected_spend = affected.merge(
-                    risk_scores[["supplier_id", "annual_spend_eur"]], on="supplier_id"
-                )["annual_spend_eur"].sum()
-                n_red    = len(affected_risk[affected_risk["risk_label"] == "red"])
-                n_single = len(affected[affected["single_source"].isin([1, True])])
+                affected       = suppliers[suppliers["region"] == region_sel]
+                affected_risk  = risk_scores[risk_scores["supplier_id"].isin(affected["supplier_id"])]
+                affected_spend = affected["annual_spend_eur"].sum()  # already in suppliers table
+                n_red          = len(affected_risk[affected_risk["risk_label"] == "red"])
+                n_single       = len(affected[affected["single_source"].isin([1, True])])
+                n_red_single   = len(affected[
+                    affected["single_source"].isin([1, True]) &
+                    affected["supplier_id"].isin(
+                        affected_risk[affected_risk["risk_label"] == "red"]["supplier_id"]
+                    )
+                ])
 
                 rc1, rc2, rc3 = st.columns(3)
                 with rc1:
@@ -3263,12 +3576,44 @@ elif page == "What-If Simulator":
                 plotly_dark_layout(fig, height=220)
                 st.plotly_chart(fig, use_container_width=True)
 
+                st.markdown('<div class="section-header">Recommended Mitigations</div>',
+                            unsafe_allow_html=True)
+                _region_actions = [
+                    ("⚡ Immediate",
+                     f"Activate regional crisis team — assess full exposure across {len(affected)} suppliers in {region_sel}"),
+                    ("📋 48 hours",
+                     f"Contact all {n_red} RED-risk supplier{'s' if n_red != 1 else ''} for delivery status confirmation and contingency plan"),
+                ]
+                if n_single > 0:
+                    _region_actions.append((
+                        "🔴 CRITICAL",
+                        f"Escalate {n_single} sole-source supplier{'s' if n_single != 1 else ''} to VP level — no alternative supply available"
+                    ))
+                if n_red_single > 0:
+                    _region_actions.append((
+                        "⚡ 7 days",
+                        f"Emergency buffer stock for {n_red_single} sole-source RED supplier{'s' if n_red_single != 1 else ''} — target 60-day coverage minimum"
+                    ))
+                _region_actions.extend([
+                    ("📋 14 days",
+                     f"Identify alternative sourcing options for sole-source parts — initiate emergency supplier qualification in {region_sel}"),
+                    ("🔍 30 days",
+                     f"Review safety stock targets for all {region_sel} suppliers and re-evaluate regional concentration risk in supply strategy"),
+                ])
+                for _priority, _action in _region_actions:
+                    st.markdown(f"""
+                    <div class="alert-card">
+                        <div style="font-size:0.78rem; color:#60a5fa; font-weight:600;">{_priority}</div>
+                        <div style="font-size:0.82rem; color:#cbd5e1; margin-top:0.2rem;">{_action}</div>
+                    </div>""", unsafe_allow_html=True)
+
             elif scenario_type == "Production Delay":
                 daily_cost    = annual_spend / 365
                 direct_cost   = daily_cost * duration
                 expedite_cost = direct_cost * 0.25
                 total_cost    = direct_cost + expedite_cost
-                prog_impact   = len(apqp[apqp["supplier_id"] == sid_sim])
+                _active_apqp  = apqp[(apqp["supplier_id"] == sid_sim) & (~apqp["status"].isin(["Completed", "Cancelled"]))]
+                prog_impact   = len(_active_apqp)
                 schedule_slip = int(duration * 1.3)
 
                 st.markdown(f"""
@@ -3309,9 +3654,59 @@ elif page == "What-If Simulator":
                         f'<div class="alert-card amber"><div style="font-size:0.82rem; color:#cbd5e1;">{action}</div></div>',
                         unsafe_allow_html=True)
 
+                # Programme exposure chart — completion % coloured by delay status
+                if prog_impact > 0 and not _active_apqp.empty:
+                    st.markdown('<div class="section-header">Active Programme Exposure</div>',
+                                unsafe_allow_html=True)
+                    _prog_show = _active_apqp.head(8).copy()
+                    _pct_vals  = [
+                        float(r["completion_pct"]) * 100 if float(r["completion_pct"]) <= 1
+                        else float(r["completion_pct"])
+                        for _, r in _prog_show.iterrows()
+                    ]
+                    _colors = [
+                        "#f87171" if bool(r["is_delayed"]) else "#fb923c" if pct > 60 else "#3b82f6"
+                        for (_, r), pct in zip(_prog_show.iterrows(), _pct_vals)
+                    ]
+                    fig_prog = go.Figure(go.Bar(
+                        x=[r["project_id"] for _, r in _prog_show.iterrows()],
+                        y=_pct_vals,
+                        marker_color=_colors,
+                        text=[f"{p:.0f}%" for p in _pct_vals],
+                        textposition="auto",
+                    ))
+                    fig_prog.add_hline(y=75, line_dash="dot", line_color="#475569",
+                                       annotation_text=f"SOP risk zone — add {schedule_slip}d slip")
+                    fig_prog.update_layout(xaxis_title="Programme", yaxis_title="Completion %",
+                                           xaxis_tickangle=-30, showlegend=False,
+                                           yaxis=dict(range=[0, 105]))
+                    plotly_dark_layout(fig_prog, height=230)
+                    st.plotly_chart(fig_prog, use_container_width=True)
+                    st.caption("🔴 Already delayed  🟠 >60% complete (SOP risk)  🔵 On track")
+
             elif scenario_type == "Sole-Source Failure":
-                buffer_days   = 22
-                recovery_days = 180
+                # Derive buffer days from spend tier + strategic importance
+                _buf_base   = {"A": 35, "B": 22, "C": 14}.get(str(sup_sim["spend_tier"]), 22)
+                _imp_adj    = {"Critical": 10, "Preferred": 5,
+                               "Approved": 0, "Conditional": -5}.get(
+                    str(sup_sim["strategic_importance"]), 0)
+                buffer_days = max(7, _buf_base + _imp_adj)
+
+                # Derive recovery days from product family qualification complexity
+                _recovery_by_family = {
+                    "Software/Firmware": 300, "Optical & Precision": 270,
+                    "Electromechanics": 210, "Electronics": 180,
+                    "Cables & Harness": 150, "Mechanics - Metal": 150,
+                    "Surface Treatment": 135, "Mechanics - Plastic": 120,
+                    "Raw Materials": 90,      "Services": 60,
+                }
+                recovery_days = _recovery_by_family.get(str(sup_sim["product_family"]), 180)
+
+                if not is_single:
+                    st.warning(
+                        f"⚠ {sup_sim['name'][:40]} is not flagged as sole-source in the portfolio. "
+                        "Results below model a sole-source failure for illustration purposes."
+                    )
 
                 st.markdown(f"""
                 <div class="kpi-card" style="margin-bottom:0.75rem;">
@@ -3387,10 +3782,20 @@ elif page == "What-If Simulator":
                         unsafe_allow_html=True)
 
             elif scenario_type == "Quality Escape":
-                parts_at_risk = int(annual_spend / 365 * 30 / 15)
+                # Part cost varies by product family; affects parts-at-risk and scrap value
+                _part_cost_by_family = {
+                    "Electronics": 8,       "Electromechanics": 45,
+                    "Mechanics - Metal": 35, "Mechanics - Plastic": 12,
+                    "Raw Materials": 5,      "Cables & Harness": 25,
+                    "Surface Treatment": 20, "Optical & Precision": 150,
+                    "Software/Firmware": 15, "Services": 15,
+                }
+                part_cost_eur = _part_cost_by_family.get(str(sup_sim["product_family"]), 15)
+                # Scrap rate scales with escape severity (3% at 200 PPM → 20% at 2000 PPM)
+                scrap_pct     = min(0.20, max(0.03, escape_ppm / 8000))
+                parts_at_risk = int(annual_spend / 365 * 30 / part_cost_eur)
                 sort_cost     = parts_at_risk * 2.5
-                scrap_pct     = 0.08
-                scrap_cost    = parts_at_risk * scrap_pct * 15
+                scrap_cost    = parts_at_risk * scrap_pct * part_cost_eur
                 total_cost    = sort_cost + scrap_cost
 
                 st.markdown(f"""
@@ -3415,16 +3820,21 @@ elif page == "What-If Simulator":
                                          delta_direction="up"), unsafe_allow_html=True)
                 with rc3:
                     st.markdown(kpi_card("Est. Scrap", f"€{scrap_cost/1000:.1f}k",
-                                         delta=f"{scrap_pct*100:.0f}% defect rate",
+                                         delta=f"{scrap_pct*100:.1f}% defect rate",
                                          delta_direction="up"), unsafe_allow_html=True)
                 with rc4:
-                    new_ppm_tier = "RED" if escape_ppm > 500 else "AMBER"
+                    new_ppm_tier = "RED" if escape_ppm > 500 else "AMBER" if escape_ppm > 200 else "GREEN"
+                    _tier_dir    = "up" if escape_ppm > 200 else "flat"
                     st.markdown(kpi_card("Risk Impact", new_ppm_tier,
                                          delta=f"From {escape_ppm} PPM escape",
-                                         delta_direction="up"), unsafe_allow_html=True)
+                                         delta_direction=_tier_dir), unsafe_allow_html=True)
 
                 months   = list(range(-3, 7))
-                ppm_base = [max(50, escape_ppm * (0.3 + 0.1 * i)) for i in range(3)]
+                sim_kpis_hist = kpis[kpis["supplier_id"] == sid_sim].sort_values("year_month").tail(3)
+                if len(sim_kpis_hist) >= 3:
+                    ppm_base = [round(float(v)) for v in sim_kpis_hist["ppm_external"].tolist()]
+                else:
+                    ppm_base = [max(50, escape_ppm * (0.3 + 0.1 * i)) for i in range(3)]
                 ppm_before = ppm_base + [escape_ppm, escape_ppm, escape_ppm * 0.9, escape_ppm * 0.85, escape_ppm * 0.8, escape_ppm * 0.75, escape_ppm * 0.7]
                 ppm_after  = ppm_base + [escape_ppm, escape_ppm * 0.5, escape_ppm * 0.15, 80, 50, 40, 35]
 
