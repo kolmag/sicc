@@ -23,8 +23,10 @@ ml/model.pkl
 ml/shap_values.pkl
 ml/shap_values_xgb.pkl
 ml/feature_importances.pkl
+ml/feature_names.pkl
+ml/model_metrics.json
 
-# Data — regenerate with: uv run python generate_supplier_data.py --out data/
+# Data — regenerate with: uv run python scripts/generate_supplier_data.py --out data/
 data/
 
 # Eval results — generated output
@@ -55,6 +57,9 @@ sc_*.html
 .cursorignore
 .cursorindexingignore
 
+# Claude
+.claude/
+
 # uv
 .uv/
 .python-version
@@ -62,10 +67,6 @@ sc_*.html
 # Langfuse local config
 .langfuse/
 
-uv.lock
-risk_scores.csv
-supplier_kpis.csv
-suppliers.csv
 uv.lock
 main.py
 *.csv

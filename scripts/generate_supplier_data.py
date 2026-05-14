@@ -11,8 +11,8 @@ Generates realistic multi-category supplier data across 36 months with:
 - ML risk labels (3-tier: green/amber/red) derived from KPIs with noise
 
 Usage:
-    python generate_supplier_data.py --out data/
-    python generate_supplier_data.py --out data/ --suppliers 1200 --seed 42
+    python scripts/generate_supplier_data.py --out data/
+    python scripts/generate_supplier_data.py --out data/ --suppliers 1200 --seed 42
 """
 
 import argparse

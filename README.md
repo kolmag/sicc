@@ -31,14 +31,36 @@ SICC is a production-grade Streamlit application combining ML risk scoring, RAG-
 
 ```
 SICC
-├── app.py                        # Streamlit UI — portfolio, agents, Q&A, and simulations
+├── app.py                        # Streamlit entry point — config, sidebar, routing (~177 lines)
+│
+├── sicc_pages/                   # One module per page, each exports render()
+│   ├── executive_portfolio.py
+│   ├── agent_command_center.py
+│   ├── risk_scoring_engine.py
+│   ├── early_warning_agent.py
+│   ├── scar_capa_triage.py
+│   ├── apqp_readiness_agent.py
+│   ├── continuity_agent.py
+│   ├── audit_planning_agent.py
+│   ├── supplier_profile.py
+│   ├── apqp_npi_tracker.py
+│   ├── supplier_qa_agent.py
+│   └── what_if_simulator.py
+│
+├── utils/                        # Shared helpers imported by all pages
+│   ├── config.py                 # Paths, constants, TABLE_COLUMNS
+│   ├── data.py                   # load_all_data, get_kb_chunk_count
+│   ├── ml.py                     # load_ml_artefacts, SHAP helpers, badge helpers
+│   ├── ui.py                     # CSS, risk_badge, kpi_card, plotly_dark_layout
+│   ├── agent_helpers.py          # Evidence pack, run log, memory utilities
+│   └── intent.py                 # classify_portfolio_intent, generate_executive_summary
 │
 ├── ml/
 │   ├── train_risk_model.py       # RF + XGBoost comparison, SHAP precomputation
-│   ├── model.pkl                 # Winning model (RandomForest, F1-Red 0.875, AUC 0.940)
 │   └── training_report.md        # Full model comparison report
 │
 ├── scripts/
+│   ├── generate_supplier_data.py # Deterministic data generator (seed=42)
 │   ├── ingest.py                 # KB ingestion: contextual retrieval + typed chunking
 │   ├── answer.py                 # RAG pipeline: HyDE → BM25+semantic → RRF → BGE → LLM
 │   ├── supplier_intake_agent.py  # Agentic supplier intake → development brief generator
@@ -53,27 +75,18 @@ SICC
 │       └── sc_viz.py             # Pre/post reranker similarity chart
 │
 ├── knowledge-base/markdown/      # 16 supplier quality KB documents
-│   ├── as9100d_supplier_control_clause_8_4.md
-│   ├── iatf_16949_supplier_requirements.md
-│   ├── iso_9001_2015_requirements.md
-│   ├── ppap_level_requirements.md
-│   ├── ppap_submission_checklist.md
-│   ├── apqp_phase_gate_guide.md
-│   ├── scar_process_escalation.md
-│   ├── risk_tier_definitions.md
-│   ├── supplier_kpi_definitions.md
-│   ├── supplier_qualification_procedure.md
-│   ├── for_cause_audit_trigger_criteria.md
-│   ├── supplier_development_methodology.md
-│   ├── single_source_risk_management.md
-│   ├── audit_finding_classification.md
-│   ├── external_risk_event_response.md
-│   └── corrective_action_closure_requirements.md
+│   └── *.md
 │
-├── data/
-│   └── supplier_portfolio.db     # SQLite — 7 tables, 75,411 rows (generated, not committed)
+├── evaluation/
+│   ├── eval.py                   # Evaluation harness (developer/practitioner/adversarial)
+│   ├── SICC_Eval.ipynb           # Colab notebook with checkpoint resume
+│   └── questions/                # 280 evaluation questions across 4 sets
 │
-└── generate_supplier_data.py     # Deterministic data generator (seed=42)
+├── tests/
+│   └── test_agent_memory.py
+│
+└── data/                         # gitignored — regenerate with scripts/generate_supplier_data.py
+    └── supplier_portfolio.db     # SQLite — 7 tables, 75,411 rows
 ```
 
 ---
@@ -209,12 +222,12 @@ cd sicc
 uv sync
 
 # Environment variables
-cp env.example .env
+cp .env.example .env
 # Fill in: ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY,
 #          LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 
 # Generate synthetic dataset
-uv run python generate_supplier_data.py --out data/
+uv run python scripts/generate_supplier_data.py --out data/
 
 # Train ML model (RF + XGBoost comparison, ~2 min on M1)
 uv run python ml/train_risk_model.py
