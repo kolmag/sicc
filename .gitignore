@@ -33,6 +33,9 @@ evaluation/results/
 #KB
 knowledge-base/markdown/*.md
 
+SICC_MASTER_PLAN.md
+PRE_EVAL_AUDIT_2026-05-14.md
+
 # Diagnostic outputs — generated, not source
 scripts/diagnostics/results/
 tsne_*.html
@@ -62,6 +65,7 @@ sc_*.html
 uv.lock
 risk_scores.csv
 supplier_kpis.csv
-suppliers.csvuv.lock
+suppliers.csv
+uv.lock
 main.py
 *.csv

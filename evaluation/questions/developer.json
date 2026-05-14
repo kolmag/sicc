@@ -1,0 +1,562 @@
+[
+  {
+    "id": "dev_001",
+    "question": "What does PPAP Level 3 require to be submitted to the customer?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_002",
+    "question": "What is the minimum production run size required for Ppk data in a PPAP Level 3 submission?",
+    "expected_sources": ["ppap_level_requirements.md", "ppap_submission_checklist.md", "apqp_phase_gate_guide.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_003",
+    "question": "What Ppk value is required for critical characteristics in a new PPAP submission?",
+    "expected_sources": ["ppap_level_requirements.md", "ppap_submission_checklist.md", "apqp_phase_gate_guide.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_004",
+    "question": "When is a new PPAP submission required after a supplier changes their production facility?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_005",
+    "question": "What is the difference between PPAP Level 1 and Level 3?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_006",
+    "question": "What is PPAP Level 5 and when is it used?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_007",
+    "question": "What does the Part Submission Warrant contain and who must sign it?",
+    "expected_sources": ["ppap_level_requirements.md", "ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_008",
+    "question": "What are the acceptance criteria for Gauge R&R on critical characteristics?",
+    "expected_sources": ["ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_009",
+    "question": "What must be included in element 6 of a PPAP submission — the Process FMEA?",
+    "expected_sources": ["ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_010",
+    "question": "What common deficiencies are found during PPAP review of the control plan?",
+    "expected_sources": ["ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_011",
+    "question": "What are the nine phases in the APQP process?",
+    "expected_sources": ["apqp_phase_gate_guide.md"],
+    "category": "apqp",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_012",
+    "question": "What are the pass criteria for the APQP Phase 4 gate — Process Validation?",
+    "expected_sources": ["apqp_phase_gate_guide.md"],
+    "category": "apqp",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_013",
+    "question": "What deliverables are required to exit the APQP Phase 1 gate — Supplier Selection?",
+    "expected_sources": ["apqp_phase_gate_guide.md"],
+    "category": "apqp",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_014",
+    "question": "What is GP-12 early production containment and when is it applied?",
+    "expected_sources": ["apqp_phase_gate_guide.md"],
+    "category": "apqp",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_015",
+    "question": "What triggers a new PPAP submission in Phase 9 of the APQP process?",
+    "expected_sources": ["apqp_phase_gate_guide.md"],
+    "category": "apqp",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_016",
+    "question": "What are the APQP programme status definitions and what action does each require?",
+    "expected_sources": ["apqp_phase_gate_guide.md"],
+    "category": "apqp",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_017",
+    "question": "What are the five phases of the SCAR process and their required timelines?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_018",
+    "question": "What actions are required within 24 hours of issuing a SCAR for a Critical finding?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_019",
+    "question": "What triggers SCAR escalation to Level 2?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_020",
+    "question": "What is the target SCAR closure rate KPI?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_021",
+    "question": "What actions does SCAR Level 3 escalation trigger?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_022",
+    "question": "What 8D sections correspond to the SCAR containment phase?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_023",
+    "question": "What are the PPM External thresholds for GREEN, AMBER, and RED risk tiers?",
+    "expected_sources": ["risk_tier_definitions.md", "supplier_kpi_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_024",
+    "question": "What mandatory actions must be taken within 24 hours when a supplier is classified RED?",
+    "expected_sources": ["risk_tier_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_025",
+    "question": "What are the upgrade criteria to move a supplier from RED to AMBER?",
+    "expected_sources": ["risk_tier_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_026",
+    "question": "What is a Probationary supplier classification and how long does it last?",
+    "expected_sources": ["risk_tier_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_027",
+    "question": "What governance requirements apply to Critical Single Source suppliers regardless of risk tier?",
+    "expected_sources": ["risk_tier_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_028",
+    "question": "How is the composite risk score calculated from KPIs?",
+    "expected_sources": ["supplier_kpi_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_029",
+    "question": "How is OTD percentage calculated and what counts as on time?",
+    "expected_sources": ["supplier_kpi_definitions.md"],
+    "category": "kpi",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_030",
+    "question": "What is the difference between PPM External and PPM Internal?",
+    "expected_sources": ["supplier_kpi_definitions.md"],
+    "category": "kpi",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_031",
+    "question": "What is the PPAP First-Time Pass Rate target and what does a low rate indicate?",
+    "expected_sources": ["supplier_kpi_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_032",
+    "question": "What KPI triggers immediate escalation when two or more are in the RED range simultaneously?",
+    "expected_sources": ["supplier_kpi_definitions.md", "iatf_16949_supplier_requirements.md", "risk_tier_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_033",
+    "question": "What are the trigger criteria for a for-cause audit following a quality escape?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_034",
+    "question": "Can a supplier refuse a for-cause audit and what happens if they do?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md"],
+    "category": "audit",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_035",
+    "question": "What external risk events trigger a mandatory for-cause audit?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_036",
+    "question": "What is the for-cause audit scope for a supplier with a SCAR non-compliance trigger?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_037",
+    "question": "How long after a supplier is classified RED must a for-cause audit be scheduled?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md"],
+    "category": "audit",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_038",
+    "question": "What is the definition of a Critical NCR audit finding?",
+    "expected_sources": ["audit_finding_classification.md"],
+    "category": "audit",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_039",
+    "question": "What score deduction applies to a Major NCR finding in a supplier audit?",
+    "expected_sources": ["audit_finding_classification.md"],
+    "category": "audit",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_040",
+    "question": "What is the containment response timeline for a Critical NCR?",
+    "expected_sources": ["audit_finding_classification.md", "corrective_action_closure_requirements.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_041",
+    "question": "How does a Minor NCR differ from a Major NCR in terms of systemic failure?",
+    "expected_sources": ["audit_finding_classification.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_042",
+    "question": "What re-audit is required after closing a Critical NCR?",
+    "expected_sources": ["audit_finding_classification.md", "corrective_action_closure_requirements.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_043",
+    "question": "What constitutes premature closure of a corrective action?",
+    "expected_sources": ["corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_044",
+    "question": "What evidence is required to close a Major NCR corrective action?",
+    "expected_sources": ["corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_045",
+    "question": "What effectiveness verification methods are available for a quality escape corrective action?",
+    "expected_sources": ["corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_046",
+    "question": "What happens when a corrective action is identified as prematurely closed a second time?",
+    "expected_sources": ["corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_047",
+    "question": "What is the maximum timeline for implementing a Critical NCR corrective action?",
+    "expected_sources": ["corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_048",
+    "question": "What are the six steps in the supplier qualification process?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_049",
+    "question": "What audit score is required for full approval in the supplier qualification audit?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_050",
+    "question": "What conditions apply to a reinstated supplier after disqualification?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_051",
+    "question": "How long is the probationary period for a new supplier and what KPIs trigger early exit?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_052",
+    "question": "What elements must a supplier development plan contain?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_053",
+    "question": "What are the standard development targets for PPM and OTD at the 6-month exit point?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_054",
+    "question": "What escalation triggers are defined in a supplier development plan?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_055",
+    "question": "What competencies must an SQE have to lead a supplier development programme?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_056",
+    "question": "What is the difference between a single-source and a sole-source supplier?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_057",
+    "question": "What buffer stock target applies to a RED-tier single-source supplier?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_058",
+    "question": "What emergency protocol activates when a single-source supplier is classified RED?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_059",
+    "question": "What minimum volume split is required once an alternative supplier is qualified for dual sourcing?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_060",
+    "question": "What contractual notification obligation must single-source suppliers meet before discontinuing a product?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_061",
+    "question": "What immediate actions are required when a supplier is flagged on the OFAC sanctions list?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "external_risk",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_062",
+    "question": "What response is required for a High severity ESG event such as a confirmed labour rights violation?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "external_risk",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_063",
+    "question": "What actions are triggered by a supplier insolvency filing?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "external_risk",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_064",
+    "question": "What does SICC event status Mitigated mean and what action is required?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "external_risk",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_065",
+    "question": "What actions are required when a supplier's IATF 16949 certification is suspended?",
+    "expected_sources": ["external_risk_event_response.md", "for_cause_audit_trigger_criteria.md"],
+    "category": "external_risk",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_066",
+    "question": "What does IATF 16949 clause 8.4.2 require for supplier performance monitoring?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md"],
+    "category": "iatf",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_067",
+    "question": "What does IATF 16949 require for second-party audit frequency based on risk tier?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md"],
+    "category": "iatf",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_068",
+    "question": "What are the key differences between VDA 6.3 and standard IATF 16949 process audit requirements?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md"],
+    "category": "iatf",
+    "difficulty": "hard"
+  },
+  {
+    "id": "dev_069",
+    "question": "What does IATF 16949 clause 8.4.1 require regarding the scope of supplier management?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md"],
+    "category": "iatf",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_070",
+    "question": "What does AS9100D clause 8.4.1 require for supplier risk assessment before selection?",
+    "expected_sources": ["as9100d_supplier_control_clause_8_4.md"],
+    "category": "as9100d",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_071",
+    "question": "What does AS9100D clause 8.4.2.2 require for regulatory flow-down to suppliers?",
+    "expected_sources": ["as9100d_supplier_control_clause_8_4.md"],
+    "category": "as9100d",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_072",
+    "question": "What minimum audit requirements does AS9100D impose on RED-tier suppliers?",
+    "expected_sources": ["as9100d_supplier_control_clause_8_4.md"],
+    "category": "as9100d",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_073",
+    "question": "What does ISO 9001 clause 8.7 require for control of nonconforming outputs?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_074",
+    "question": "What does ISO 9001 clause 10.2 require for corrective action?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "easy"
+  },
+  {
+    "id": "dev_075",
+    "question": "What are the ISO 9001 requirements for internal audit frequency and objectivity?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_076",
+    "question": "What does ISO 9001 clause 7.1.5 require for monitoring and measuring resources?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_077",
+    "question": "What are the key differences between ISO 9001 and IATF 16949 regarding special characteristics?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_078",
+    "question": "What does ISO 9001 clause 7.5.3 require for control of documented information?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_079",
+    "question": "What management review inputs does ISO 9001 clause 9.3 require?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "medium"
+  },
+  {
+    "id": "dev_080",
+    "question": "What does ISO 9001 clause 8.5.6 require when a supplier changes their production process?",
+    "expected_sources": ["iso_9001_2015_requirements.md"],
+    "category": "iso9001",
+    "difficulty": "medium"
+  }
+]

@@ -12,6 +12,7 @@ import argparse
 import os
 
 import chromadb
+from chromadb.config import Settings
 import numpy as np
 import plotly.graph_objects as go
 from dotenv import load_dotenv
@@ -27,6 +28,11 @@ os.environ["CHROMA_TELEMETRY"]     = "False"
 COLLECTION_NAME = "sicc_kb"
 EMBED_MODEL     = "text-embedding-3-small"
 CHROMA_DB_PATH  = "chroma_db"
+CHROMA_SETTINGS = Settings(
+    anonymized_telemetry=False,
+    chroma_product_telemetry_impl="scripts.chroma_noop_telemetry.NoopTelemetry",
+    chroma_telemetry_impl="scripts.chroma_noop_telemetry.NoopTelemetry",
+)
 
 PALETTE = [
     "#3b82f6", "#f87171", "#34d399", "#fb923c", "#c084fc",
@@ -59,7 +65,10 @@ def run_tsne(db_path: str, color_field: str, out_path: str,
             response = _oai.embeddings.create(model=EMBED_MODEL, input=input)
             return [d.embedding for d in response.data]
 
-    chroma_client = chromadb.PersistentClient(path=os.path.abspath(db_path))
+    chroma_client = chromadb.PersistentClient(
+        path=os.path.abspath(db_path),
+        settings=CHROMA_SETTINGS,
+    )
     collection    = chroma_client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=EmbedFn(),

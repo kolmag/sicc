@@ -8,8 +8,8 @@ import json
 import pickle
 import sqlite3
 from pathlib import Path
+from datetime import datetime, timezone
 
-from litellm.types.llms.vertex_ai import Instance
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -20,6 +20,27 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scripts.answer import answer as rag_answer, CHROMA_DB_PATH
+from scripts.supplier_intake_agent import (
+    SupplierDevelopmentBrief,
+    brief_to_markdown,
+    generate_supplier_development_brief,
+)
+from scripts.supplier_alert_agent import build_supplier_trend_alerts
+from scripts.scar_capa_agent import triage_claim, triage_manual_issue
+from scripts.apqp_readiness_agent import assess_apqp_launch_readiness
+from scripts.continuity_agent import build_continuity_watchlist, assess_single_source_continuity
+from scripts.audit_planning_agent import build_audit_plan_watchlist, plan_supplier_audit
+from scripts.agent_memory import (
+    clear_stale_supplier_memory,
+    finish_agent_run,
+    get_supplier_agent_runs,
+    get_supplier_memory,
+    init_agent_memory,
+    normalize_severity,
+    record_agent_run_step,
+    remember_agent_output,
+    start_agent_run,
+)
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -184,17 +205,64 @@ tbody tr:hover { background: #131c2e !important; }
 DB_PATH = Path(__file__).parent / "data" / "supplier_portfolio.db"
 ML_DIR  = Path(__file__).parent / "ml"
 
+TABLE_COLUMNS = {
+    "suppliers": [
+        "supplier_id", "name", "country", "region", "city", "product_family",
+        "subcategory", "certification", "spend_tier", "annual_spend_eur",
+        "qualification_status", "single_source", "strategic_importance",
+        "years_active", "onboarding_date", "archetype", "archetype_description",
+        "primary_contact", "primary_contact_email", "account_manager",
+    ],
+    "supplier_kpis": [
+        "kpi_id", "supplier_id", "year_month", "year", "month", "ppm_external",
+        "ppm_internal", "otd_pct", "oqd_pct", "audit_score", "scar_count",
+        "scar_open_days_avg", "ppap_first_time_pass_pct", "ca_closure_rate_pct",
+        "cost_of_poor_quality_eur", "risk_label", "risk_label_true",
+    ],
+    "claims": [
+        "incident_number", "supplier_id", "supplier_name", "creation_date",
+        "category", "status", "number_of_bad_parts", "chargeback",
+        "chargeback_value_eur", "product_family", "spend_tier",
+    ],
+    "apqp_projects": [
+        "project_id", "supplier_id", "supplier_name", "project_type", "status",
+        "creation_date", "customer_sop_date", "supplier_sop_date",
+        "product_family", "spend_tier", "completion_pct", "is_delayed",
+    ],
+    "audits": [
+        "audit_id", "supplier_id", "supplier_name", "audit_date", "audit_type",
+        "is_remote", "audit_score", "n_findings", "highest_finding_type",
+        "status", "product_family",
+    ],
+    "risk_scores": [
+        "supplier_id", "avg_ppm_3m", "avg_otd_3m", "avg_audit_score_3m",
+        "avg_scar_count_3m", "composite_risk_score", "spend_risk_priority",
+        "risk_label", "risk_label_true", "recommended_action", "product_family",
+        "spend_tier", "annual_spend_eur", "single_source",
+        "strategic_importance", "qualification_status",
+    ],
+    "external_events": [
+        "event_id", "supplier_id", "supplier_name", "country", "region",
+        "event_type", "severity", "description", "event_date", "status",
+        "response_due_date", "resolved_date", "product_family", "spend_tier",
+        "annual_spend_eur", "single_source", "requires_capa", "capa_linked",
+        "source",
+    ],
+}
+
 @st.cache_data(ttl=300)
 def load_all_data():
     """Load all tables from SQLite."""
+    tables = {name: pd.DataFrame(columns=cols) for name, cols in TABLE_COLUMNS.items()}
+    if not DB_PATH.exists():
+        return tables
+
     conn = sqlite3.connect(DB_PATH)
-    tables = {}
-    for table in ["suppliers", "supplier_kpis", "claims", "apqp_projects",
-                  "audits", "risk_scores", "external_events"]:
+    for table, columns in TABLE_COLUMNS.items():
         try:
             tables[table] = pd.read_sql(f"SELECT * FROM {table}", conn)
         except Exception:
-            tables[table] = pd.DataFrame()
+            tables[table] = pd.DataFrame(columns=columns)
     conn.close()
 
     if not tables["supplier_kpis"].empty:
@@ -309,25 +377,6 @@ Rules:
             f"(2) Initiate dual-sourcing feasibility for top 3 single-source RED suppliers. "
             f"(3) Review all open Critical/High external events for CAPA linkage.*"
         )
-    # Normalise SHAP format — new SHAP returns (n_samples, n_features, n_classes)
-    # convert to list of (n_samples, n_features) per class
-    sv = shap_payload["shap_values"]
-    if isinstance(sv, np.ndarray) and sv.ndim == 3:
-        sv = [sv[:, :, i] for i in range(sv.shape[2])]
-
-    return {
-        "model":          model,
-        "shap_values":    sv,
-        "expected_value": shap_payload["expected_value"],
-        "feature_names":  shap_payload["feature_names"],
-        "X":              shap_payload["X"],
-        "supplier_ids":   shap_payload["supplier_ids"],
-        "y_pred":         shap_payload["y_pred"],
-        "y_pred_proba":   shap_payload["y_pred_proba"],
-        "label_order":    shap_payload["label_order"],
-        "winner_name":    shap_payload.get("winner_name", "RandomForest"),
-        "metrics":        metrics,
-    }
 
 
 # ── UI helpers ────────────────────────────────────────────────────────────────
@@ -509,6 +558,218 @@ def ml_predicted_badge(ml, supplier_id: str) -> str:
             f'{proba*100:.0f}% conf</span>')
 
 
+def parse_agent_ts(ts: str):
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def memory_age_hours(item: dict) -> float | None:
+    parsed = parse_agent_ts(item.get("updated_at", ""))
+    if not parsed:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - parsed).total_seconds() / 3600
+
+
+def is_memory_fresh(memory: list[dict], max_age_hours: int = 24) -> bool:
+    if not memory:
+        return False
+    ages = [memory_age_hours(item) for item in memory]
+    ages = [age for age in ages if age is not None]
+    return bool(ages) and max(ages) <= max_age_hours
+
+
+def severity_rank(severity: str) -> int:
+    return {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}.get(normalize_severity(severity), 0)
+
+
+def severity_badge_text(severity: str) -> str:
+    return normalize_severity(severity).upper()
+
+
+def operator_status_label(status: str) -> str:
+    labels = {
+        "fresh": "fresh",
+        "stale": "stale - refresh recommended",
+        "failed": "failed latest run",
+        "skipped": "skipped latest run",
+        "success": "fresh",
+        "no data": "no current output",
+        "info": "no current output",
+    }
+    return labels.get(str(status).strip().lower(), str(status))
+
+
+def build_run_log_markdown(supplier_id: str, agent_runs: list[dict]) -> str:
+    lines = [
+        f"# SICC Agent Run Log: {supplier_id}",
+        "",
+        f"- Exported: {datetime.now().isoformat(timespec='seconds')}",
+    ]
+    if not agent_runs:
+        lines.append("- No agent runs recorded.")
+        return "\n".join(lines)
+
+    for run in agent_runs:
+        lines.extend([
+            "",
+            f"## Run {run['run_id']}",
+            f"- Status: {run['status']}",
+            f"- Started: {run['started_at']}",
+            f"- Finished: {run.get('finished_at') or ''}",
+            f"- Summary: {run['summary']}",
+            "",
+            "### Steps",
+        ])
+        for step in run.get("steps", []):
+            lines.append(
+                f"- {step['agent_name']}: {operator_status_label(step['status'])} "
+                f"({normalize_severity(step['severity'])}) - {step['error'] or step['summary']}"
+            )
+    return "\n".join(lines)
+
+
+def build_evidence_pack_markdown(
+    supplier,
+    risk_row,
+    sup_kpis,
+    sup_claims,
+    sup_audits,
+    sup_events,
+    sup_apqp,
+    memory: list[dict],
+    agent_runs: list[dict] | None = None,
+) -> str:
+    supplier_name = supplier.get("name", supplier.get("supplier_name", "Unknown supplier"))
+    risk_label = risk_row.get("risk_label", "unknown") if hasattr(risk_row, "get") else "unknown"
+    lines = [
+        f"# SICC Supplier Evidence Pack: {supplier_name}",
+        "",
+        f"- Supplier ID: {supplier.get('supplier_id', 'unknown')}",
+        f"- Product family: {supplier.get('product_family', 'unknown')}",
+        f"- Country: {supplier.get('country', 'unknown')}",
+        f"- Single source: {bool(supplier.get('single_source', False))}",
+        f"- Risk tier: {str(risk_label).upper()}",
+        f"- Generated: {datetime.now().isoformat(timespec='seconds')}",
+        "",
+        "## KPI Snapshot",
+    ]
+    for key in ["avg_ppm_3m", "avg_otd_3m", "avg_audit_score_3m", "avg_scar_count_3m", "composite_risk_score"]:
+        if hasattr(risk_row, "get") and key in risk_row:
+            lines.append(f"- {key}: {risk_row.get(key)}")
+
+    lines.extend(["", "## Claims"])
+    if sup_claims.empty:
+        lines.append("- No claims on record.")
+    else:
+        for _, row in sup_claims.sort_values("creation_date", ascending=False).head(10).iterrows():
+            lines.append(f"- {row.get('incident_number')}: {row.get('category')} · {row.get('status')} · bad parts {row.get('number_of_bad_parts')}")
+
+    lines.extend(["", "## Audits"])
+    if sup_audits.empty:
+        lines.append("- No audits on record.")
+    else:
+        for _, row in sup_audits.sort_values("audit_date", ascending=False).head(10).iterrows():
+            lines.append(f"- {row.get('audit_id')}: {row.get('audit_type')} · score {row.get('audit_score')} · {row.get('highest_finding_type')} · {row.get('status')}")
+
+    lines.extend(["", "## External Events"])
+    if sup_events.empty:
+        lines.append("- No external events on record.")
+    else:
+        for _, row in sup_events.sort_values("event_date", ascending=False).head(10).iterrows():
+            lines.append(f"- {row.get('event_id')}: {row.get('event_type')} · {row.get('severity')} · {row.get('status')}")
+
+    lines.extend(["", "## APQP Projects"])
+    if sup_apqp.empty:
+        lines.append("- No APQP projects on record.")
+    else:
+        for _, row in sup_apqp.sort_values("creation_date", ascending=False).head(10).iterrows():
+            lines.append(f"- {row.get('project_id')}: {row.get('project_type')} · {row.get('status')} · completion {row.get('completion_pct')}% · delayed {row.get('is_delayed')}")
+
+    lines.extend(["", "## Agent Memory"])
+    if not memory:
+        lines.append("- No agent memory records.")
+    else:
+        for item in memory:
+            lines.extend([
+                f"### {item['agent_name']} ({severity_badge_text(item['severity'])})",
+                f"- Subject: {item['subject_id']}",
+                f"- Updated: {item['updated_at']}",
+                f"- Summary: {item['summary']}",
+            ])
+            payload = item.get("payload", {})
+            for key in ["primary_risk_drivers", "signals", "triggers", "blockers", "risks", "exposure_drivers", "mandatory_actions", "recovery_actions"]:
+                values = payload.get(key)
+                if isinstance(values, list) and values:
+                    lines.append(f"- {key.replace('_', ' ').title()}:")
+                    for value in values[:6]:
+                        if isinstance(value, dict):
+                            lines.append(f"  - {value.get('action') or value.get('issue') or value}")
+                        else:
+                            lines.append(f"  - {value}")
+            docs = payload.get("source_documents", [])
+            if docs:
+                lines.append(f"- Source documents: {', '.join(docs)}")
+            lines.append("")
+
+    lines.extend(["", "## Agent Run History"])
+    if not agent_runs:
+        lines.append("- No agent runs recorded.")
+    else:
+        for run in agent_runs:
+            lines.extend([
+                f"### Run {run['run_id'][:10]} ({run['status']})",
+                f"- Started: {run['started_at']}",
+                f"- Finished: {run.get('finished_at') or ''}",
+                f"- Summary: {run['summary']}",
+            ])
+            for step in run.get("steps", []):
+                lines.append(
+                    f"  - {step['agent_name']}: {operator_status_label(step['status'])} "
+                    f"({normalize_severity(step['severity'])}) - {step['error'] or step['summary']}"
+                )
+
+    return "\n".join(lines)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def classify_portfolio_intent(q: str) -> dict:
+    """
+    LLM intent classifier for portfolio Q&A queries.
+    Top-level cached function — not redefined on every render cycle.
+    Returns structured intent dict for routing to the correct data query.
+    """
+    from litellm import completion as _completion
+    import json as _json
+    prompt = f"""Classify this supplier portfolio query into a structured filter.
+
+Query: {q}
+
+Return ONLY a JSON object with these exact fields (no markdown, no explanation):
+{{
+  "intent": "red_risk" | "single_source" | "ppm_threshold" | "audit_findings" | "capa_events" | "geopolitical" | "apqp_delayed" | "general",
+  "country": "country name or null",
+  "ppm_threshold": number or null,
+  "risk_tier": "red" | "amber" | "green" | null,
+  "finding_type": "Major NCR" | "Critical NCR" | "Minor NCR" | null
+}}"""
+    try:
+        resp = _completion(
+            model="groq/openai/gpt-oss-120b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0, max_tokens=120,
+        )
+        text = resp.choices[0].message.content.strip()
+        text = text.replace("```json", "").replace("```", "").strip()
+        return _json.loads(text)
+    except Exception:
+        return {"intent": "general", "country": None,
+                "ppm_threshold": None, "risk_tier": None, "finding_type": None}
+
+
 # ── Load data ─────────────────────────────────────────────────────────────────
 
 data        = load_all_data()
@@ -520,6 +781,13 @@ audits      = data["audits"]
 risk_scores = data["risk_scores"]
 events      = data["external_events"]
 ml          = load_ml_artefacts()
+
+if suppliers.empty or risk_scores.empty:
+    st.error("Supplier portfolio data is not available.")
+    st.info("Generate the dataset first with `uv run python generate_supplier_data.py --out data/`.")
+    st.stop()
+
+init_agent_memory(DB_PATH)
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
@@ -533,7 +801,7 @@ with st.sidebar:
 
     page = st.selectbox(
         "Navigation",
-        ["Executive Portfolio", "Risk Scoring Engine", "Supplier Profile",
+        ["Executive Portfolio", "Agent Command Center", "Risk Scoring Engine", "Early Warning Agent", "SCAR/CAPA Triage", "APQP Readiness Agent", "Continuity Agent", "Audit Planning Agent", "Supplier Profile",
          "APQP / NPI Tracker", "Supplier Q&A Agent", "What-If Simulator"],
         label_visibility="collapsed"
     )
@@ -581,6 +849,10 @@ with st.sidebar:
             ⬡ ML · {winner}<br>
             AUC {m.get('auc_ovr', 0):.3f} · F1-Red {m.get('f1_red', 0):.3f}
         </div>""", unsafe_allow_html=True)
+
+if filtered_suppliers.empty:
+    st.info("No suppliers match the current sidebar filters. Clear or adjust the filters to continue.")
+    st.stop()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -719,7 +991,458 @@ if page == "Executive Portfolio":
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# PAGE 2: RISK SCORING ENGINE
+# PAGE 2: AGENT COMMAND CENTER
+# ═══════════════════════════════════════════════════════════════════════
+
+elif page == "Agent Command Center":
+    st.markdown('<div class="page-title">Agent Command Center</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Shared memory view across supplier workflow agents</div>', unsafe_allow_html=True)
+
+    supplier_options = filtered_suppliers[["supplier_id", "name"]].copy()
+    supplier_options["display"] = supplier_options["name"] + " (" + supplier_options["supplier_id"] + ")"
+    selected_supplier = st.selectbox("Select supplier", supplier_options["display"].tolist())
+    sid = selected_supplier.split("(")[-1].replace(")", "").strip()
+
+    sup = suppliers[suppliers["supplier_id"] == sid].iloc[0]
+    risk_match = risk_scores[risk_scores["supplier_id"] == sid]
+    risk_row = risk_match.iloc[0] if not risk_match.empty else {}
+    sup_kpis = kpis[kpis["supplier_id"] == sid].sort_values("year_month")
+    sup_claims = claims[claims["supplier_id"] == sid]
+    sup_audits = audits[audits["supplier_id"] == sid]
+    sup_events = events[events["supplier_id"] == sid]
+    sup_apqp = apqp[apqp["supplier_id"] == sid]
+    memory = get_supplier_memory(DB_PATH, sid)
+    fresh_memory = is_memory_fresh(memory)
+    agent_runs = get_supplier_agent_runs(DB_PATH, sid, limit=5)
+    stale_records = [item for item in memory if (memory_age_hours(item) is None or memory_age_hours(item) > 24)]
+
+    sync_col, cleanup_col, export_col = st.columns([1, 1, 1])
+    with sync_col:
+        force_sync = st.checkbox("Force refresh", value=False)
+        run_sync = st.button("Run Agent Sync", type="primary", disabled=(fresh_memory and not force_sync))
+    with cleanup_col:
+        clear_stale = st.button("Clear Stale Memory", disabled=not stale_records)
+        if clear_stale:
+            deleted = clear_stale_supplier_memory(DB_PATH, sid, max_age_hours=24)
+            st.success(f"Cleared {deleted} stale memory record(s).")
+            memory = get_supplier_memory(DB_PATH, sid)
+            fresh_memory = is_memory_fresh(memory)
+            stale_records = [item for item in memory if (memory_age_hours(item) is None or memory_age_hours(item) > 24)]
+    with export_col:
+        st.markdown(
+            f'<div style="font-size:0.78rem; color:#64748b; padding-top:0.45rem;">'
+            f'Memory status: {"fresh" if fresh_memory else "missing or stale"}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    if stale_records:
+        stale_names = ", ".join(sorted({item["agent_name"] for item in stale_records}))
+        st.warning(f"{len(stale_records)} stale agent memory record(s) detected: {stale_names}. Refresh or clear stale memory before using this supplier pack operationally.")
+
+    if agent_runs:
+        st.download_button(
+            "Download Run Log",
+            data=build_run_log_markdown(sid, agent_runs),
+            file_name=f"{sid}_agent_run_log.md",
+            mime="text/markdown",
+            key=f"download_agent_run_log_{sid}",
+        )
+
+    if run_sync:
+        run_id = start_agent_run(DB_PATH, sid)
+        sync_results = []
+
+        def log_step(agent_name, status, summary="", severity="info", error="", started_at=None):
+            record_agent_run_step(
+                DB_PATH,
+                run_id=run_id,
+                agent_name=agent_name,
+                supplier_id=sid,
+                status=status,
+                summary=summary,
+                severity=severity,
+                error=error,
+                started_at=started_at,
+            )
+            sync_results.append({
+                "Agent": agent_name,
+                "Status": status,
+                "Severity": normalize_severity(severity),
+                "Summary": summary,
+                "Error": error,
+            })
+
+        def step_started_at():
+            return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+        started_at = step_started_at()
+        try:
+            brief = generate_supplier_development_brief(
+                supplier=sup,
+                risk_row=risk_row,
+                kpis=sup_kpis,
+                claims=sup_claims,
+                audits=sup_audits,
+                events=sup_events,
+                apqp=sup_apqp,
+                use_llm=False,
+            )
+            brief_severity = {"red": "high", "amber": "medium", "green": "low"}.get(brief.risk_level, "info")
+            brief_summary = f"{brief.recommended_pathway}: {len(brief.development_actions)} action(s)"
+            remember_agent_output(
+                DB_PATH,
+                agent_name="Supplier Intake Agent",
+                supplier_id=sid,
+                subject_id="development_brief",
+                severity=brief_severity,
+                summary=brief_summary,
+                payload=brief.model_dump(),
+            )
+            log_step("Supplier Intake Agent", "success", brief_summary, brief_severity, started_at=started_at)
+        except Exception as exc:
+            log_step("Supplier Intake Agent", "failed", "Development brief failed", "critical", str(exc), started_at)
+
+        started_at = step_started_at()
+        try:
+            alerts = build_supplier_trend_alerts(
+                suppliers=suppliers,
+                kpis=kpis,
+                risk_scores=risk_scores,
+                claims=claims,
+                audits=audits,
+                events=events,
+                apqp=apqp,
+                supplier_ids={sid},
+                top_n=1,
+            )
+            if alerts:
+                alert = alerts[0]
+                alert_summary = f"{alert.direction.title()} detected, score {alert.trend_score:.1f}/100"
+                remember_agent_output(
+                    DB_PATH,
+                    agent_name="Early Warning Agent",
+                    supplier_id=sid,
+                    subject_id="trend_alert",
+                    severity=alert.alert_level,
+                    summary=alert_summary,
+                    payload=alert.model_dump(),
+                )
+                log_step("Early Warning Agent", "success", alert_summary, alert.alert_level, started_at=started_at)
+            else:
+                log_step("Early Warning Agent", "skipped", "No material trend alert detected", "info", started_at=started_at)
+        except Exception as exc:
+            log_step("Early Warning Agent", "failed", "Trend alert failed", "critical", str(exc), started_at)
+
+        started_at = step_started_at()
+        try:
+            if bool(sup.get("single_source", False)):
+                continuity = assess_single_source_continuity(
+                    supplier=sup,
+                    risk_row=risk_row,
+                    supplier_claims=sup_claims,
+                    supplier_events=sup_events,
+                    supplier_apqp=sup_apqp,
+                )
+                continuity_summary = f"{continuity.continuity_level.title()} continuity exposure, buffer target {continuity.buffer_stock_target_days}"
+                remember_agent_output(
+                    DB_PATH,
+                    agent_name="Continuity Agent",
+                    supplier_id=sid,
+                    subject_id="single_source_plan",
+                    severity=continuity.continuity_level,
+                    summary=continuity_summary,
+                    payload=continuity.model_dump(),
+                )
+                log_step("Continuity Agent", "success", continuity_summary, continuity.continuity_level, started_at=started_at)
+            else:
+                log_step("Continuity Agent", "skipped", "Supplier is not marked single source", "info", started_at=started_at)
+        except Exception as exc:
+            log_step("Continuity Agent", "failed", "Continuity plan failed", "critical", str(exc), started_at)
+
+        started_at = step_started_at()
+        try:
+            audit_plan = plan_supplier_audit(
+                supplier=sup,
+                risk_row=risk_row,
+                supplier_kpis=sup_kpis,
+                supplier_claims=sup_claims,
+                supplier_audits=sup_audits,
+                supplier_events=sup_events,
+            )
+            audit_severity = {
+                "immediate": "critical",
+                "high": "high",
+                "medium": "medium",
+                "scheduled": "low",
+            }.get(audit_plan.urgency, "info")
+            audit_summary = f"{audit_plan.audit_type} · {audit_plan.urgency} · {audit_plan.schedule_timeline}"
+            remember_agent_output(
+                DB_PATH,
+                agent_name="Audit Planning Agent",
+                supplier_id=sid,
+                subject_id="audit_plan",
+                severity=audit_severity,
+                summary=audit_summary,
+                payload=audit_plan.model_dump(),
+            )
+            log_step("Audit Planning Agent", "success", audit_summary, audit_severity, started_at=started_at)
+        except Exception as exc:
+            log_step("Audit Planning Agent", "failed", "Audit planning failed", "critical", str(exc), started_at)
+
+        started_at = step_started_at()
+        try:
+            if not sup_apqp.empty:
+                apqp_decisions = [
+                    assess_apqp_launch_readiness(
+                        project=row,
+                        supplier=sup,
+                        risk_row=risk_row,
+                        supplier_claims=sup_claims,
+                        supplier_events=sup_events,
+                    )
+                    for _, row in sup_apqp.iterrows()
+                ]
+                worst = sorted(apqp_decisions, key=lambda item: item.readiness_score)[0]
+                apqp_severity = {
+                    "HOLD": "critical",
+                    "CONDITIONAL_GO": "medium",
+                    "GO": "low",
+                }.get(worst.launch_decision, "info")
+                apqp_summary = f"{worst.launch_decision.replace('_', ' ')} for {worst.project_id}, score {worst.readiness_score:.1f}/100"
+                remember_agent_output(
+                    DB_PATH,
+                    agent_name="APQP Readiness Agent",
+                    supplier_id=sid,
+                    subject_id=f"apqp_{worst.project_id}",
+                    severity=apqp_severity,
+                    summary=apqp_summary,
+                    payload=worst.model_dump(),
+                )
+                log_step("APQP Readiness Agent", "success", apqp_summary, apqp_severity, started_at=started_at)
+            else:
+                log_step("APQP Readiness Agent", "skipped", "No APQP project found for supplier", "info", started_at=started_at)
+        except Exception as exc:
+            log_step("APQP Readiness Agent", "failed", "APQP readiness failed", "critical", str(exc), started_at)
+
+        started_at = step_started_at()
+        try:
+            open_claims = sup_claims[sup_claims["status"].astype(str).str.lower() != "closed"] if not sup_claims.empty else pd.DataFrame()
+            if not open_claims.empty:
+                claim = open_claims.sort_values("creation_date", ascending=False).iloc[0]
+                triage = triage_claim(
+                    claim=claim,
+                    supplier=sup,
+                    risk_row=risk_row,
+                    supplier_claims=sup_claims,
+                    supplier_kpis=sup_kpis,
+                    supplier_audits=sup_audits,
+                    supplier_events=sup_events,
+                )
+                scar_severity = {
+                    "Critical NCR": "critical",
+                    "Major NCR": "high",
+                    "Minor NCR": "medium",
+                    "Observation": "low",
+                }.get(triage.finding_grade, "info")
+                scar_summary = f"{triage.finding_grade} · {triage.scar_escalation_level} · severity {triage.severity_score:.1f}/100"
+                remember_agent_output(
+                    DB_PATH,
+                    agent_name="SCAR/CAPA Triage Agent",
+                    supplier_id=sid,
+                    subject_id=triage.incident_number,
+                    severity=scar_severity,
+                    summary=scar_summary,
+                    payload=triage.model_dump(),
+                )
+                log_step("SCAR/CAPA Triage Agent", "success", scar_summary, scar_severity, started_at=started_at)
+            else:
+                log_step("SCAR/CAPA Triage Agent", "skipped", "No open claim available for triage", "info", started_at=started_at)
+        except Exception as exc:
+            log_step("SCAR/CAPA Triage Agent", "failed", "SCAR/CAPA triage failed", "critical", str(exc), started_at)
+
+        finish_agent_run(DB_PATH, run_id)
+        failed_steps = [row for row in sync_results if row["Status"] == "failed"]
+        if failed_steps:
+            st.warning(f"Agent sync completed with {len(failed_steps)} failed step(s). See Run History below.")
+        else:
+            st.success("Agent sync completed and outputs were saved to shared memory.")
+        st.dataframe(pd.DataFrame(sync_results), use_container_width=True, hide_index=True)
+        memory = get_supplier_memory(DB_PATH, sid)
+        fresh_memory = is_memory_fresh(memory)
+        agent_runs = get_supplier_agent_runs(DB_PATH, sid, limit=5)
+        stale_records = [item for item in memory if (memory_age_hours(item) is None or memory_age_hours(item) > 24)]
+
+    expected_agents = [
+        "Supplier Intake Agent",
+        "Early Warning Agent",
+        "Continuity Agent",
+        "Audit Planning Agent",
+        "APQP Readiness Agent",
+        "SCAR/CAPA Triage Agent",
+    ]
+    memory_by_agent = {}
+    for item in memory:
+        memory_by_agent.setdefault(item["agent_name"], []).append(item)
+    agent_runs = get_supplier_agent_runs(DB_PATH, sid, limit=5)
+    latest_steps = {}
+    if agent_runs:
+        latest_steps = {step["agent_name"]: step for step in agent_runs[0].get("steps", [])}
+    worst_severity = max([severity_rank(item["severity"]) for item in memory], default=0)
+    worst_label = {
+        4: "critical",
+        3: "high",
+        2: "medium",
+        1: "low",
+        0: "info",
+    }[worst_severity]
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1:
+        st.markdown(kpi_card("Memory Records", f"{len(memory):,}"), unsafe_allow_html=True)
+    with m2:
+        critical = sum(1 for item in memory if normalize_severity(item["severity"]) == "critical")
+        st.markdown(kpi_card("Critical", f"{critical:,}", delta_direction="up" if critical else "flat"), unsafe_allow_html=True)
+    with m3:
+        high = sum(1 for item in memory if normalize_severity(item["severity"]) == "high")
+        st.markdown(kpi_card("High", f"{high:,}", delta_direction="up" if high else "flat"), unsafe_allow_html=True)
+    with m4:
+        st.markdown(kpi_card("Worst Severity", worst_label.upper()), unsafe_allow_html=True)
+    with m5:
+        st.markdown(kpi_card("Supplier", sid), unsafe_allow_html=True)
+
+    if agent_runs:
+        st.markdown('<div class="section-header">Run History</div>', unsafe_allow_html=True)
+        run_rows = [
+            {
+                "Started": run["started_at"],
+                "Finished": run.get("finished_at") or "",
+                "Status": operator_status_label(run["status"]),
+                "Summary": run["summary"],
+                "Run ID": run["run_id"][:10],
+            }
+            for run in agent_runs
+        ]
+        st.dataframe(pd.DataFrame(run_rows), use_container_width=True, hide_index=True)
+
+        latest = agent_runs[0]
+        failed_latest = [step for step in latest.get("steps", []) if step["status"] == "failed"]
+        if failed_latest:
+            st.error("Latest Agent Sync has failed steps.")
+            for step in failed_latest:
+                st.markdown(f"- **{step['agent_name']}**: {step['error'] or step['summary']}")
+
+        with st.expander("Latest Run Step Details", expanded=bool(failed_latest)):
+            step_rows = [
+                {
+                    "Agent": step["agent_name"],
+                    "Status": operator_status_label(step["status"]),
+                    "Severity": normalize_severity(step["severity"]),
+                    "Summary": step["summary"],
+                    "Error": step["error"],
+                    "Finished": step["finished_at"],
+                }
+                for step in latest.get("steps", [])
+            ]
+            st.dataframe(pd.DataFrame(step_rows), use_container_width=True, hide_index=True)
+
+    if not memory:
+        st.info("No shared memory records for this supplier yet. Run Agent Sync to populate them.")
+    else:
+        st.markdown('<div class="section-header">Agent Status</div>', unsafe_allow_html=True)
+        status_rows = []
+        for agent in expected_agents:
+            records = memory_by_agent.get(agent, [])
+            latest_step = latest_steps.get(agent)
+            if records:
+                top = sorted(records, key=lambda item: severity_rank(item["severity"]), reverse=True)[0]
+                age = memory_age_hours(top)
+                status = "fresh" if age is not None and age <= 24 else "stale"
+                if latest_step and latest_step["status"] == "failed":
+                    status = "failed"
+                status_rows.append({
+                    "Agent": agent,
+                    "Status": operator_status_label(status),
+                    "Severity": normalize_severity(top["severity"]),
+                    "Records": len(records),
+                    "Last Updated": top["updated_at"],
+                    "Summary": latest_step["error"] if latest_step and latest_step["status"] == "failed" else top["summary"],
+                })
+            else:
+                status = "no data"
+                summary = "No current memory record"
+                if latest_step:
+                    status = latest_step["status"]
+                    summary = latest_step["error"] or latest_step["summary"]
+                status_rows.append({
+                    "Agent": agent,
+                    "Status": operator_status_label(status),
+                    "Severity": "info",
+                    "Records": 0,
+                    "Last Updated": "",
+                    "Summary": summary,
+                })
+        st.dataframe(pd.DataFrame(status_rows), use_container_width=True, hide_index=True)
+
+        st.markdown('<div class="section-header">Shared Agent Memory</div>', unsafe_allow_html=True)
+        mem_df = pd.DataFrame([
+            {
+                "Agent": item["agent_name"],
+                "Severity": normalize_severity(item["severity"]),
+                "Subject": item["subject_id"],
+                "Summary": item["summary"],
+                "Updated": item["updated_at"],
+            }
+            for item in memory
+        ])
+        st.dataframe(mem_df, use_container_width=True, hide_index=True)
+
+        evidence_pack = build_evidence_pack_markdown(
+            supplier=sup,
+            risk_row=risk_row,
+            sup_kpis=sup_kpis,
+            sup_claims=sup_claims,
+            sup_audits=sup_audits,
+            sup_events=sup_events,
+            sup_apqp=sup_apqp,
+            memory=memory,
+            agent_runs=agent_runs,
+        )
+        st.download_button(
+            "Download Evidence Pack",
+            data=evidence_pack,
+            file_name=f"{sid}_agent_evidence_pack.md",
+            mime="text/markdown",
+            key=f"download_agent_pack_{sid}",
+        )
+
+        st.markdown('<div class="section-header">Memory Details</div>', unsafe_allow_html=True)
+        for item in memory:
+            item_severity = normalize_severity(item["severity"])
+            with st.expander(f"{item_severity.upper()} · {item['agent_name']} · {item['summary']}", expanded=item_severity == "critical"):
+                payload = item.get("payload", {})
+                key_lists = [
+                    "primary_risk_drivers", "signals", "triggers", "blockers",
+                    "risks", "exposure_drivers", "mandatory_actions",
+                    "recovery_actions", "development_actions",
+                ]
+                for key in key_lists:
+                    value = payload.get(key)
+                    if isinstance(value, list) and value:
+                        st.markdown(f"**{key.replace('_', ' ').title()}**")
+                        for entry in value[:8]:
+                            if isinstance(entry, dict):
+                                st.markdown(f"- {entry.get('action') or entry.get('issue') or entry}")
+                            else:
+                                st.markdown(f"- {entry}")
+                docs = payload.get("source_documents", [])
+                if docs:
+                    st.markdown("**Source Documents**")
+                    st.markdown(", ".join(f"`{doc}`" for doc in docs))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PAGE 3: RISK SCORING ENGINE
 # ═══════════════════════════════════════════════════════════════════════
 
 elif page == "Risk Scoring Engine":
@@ -847,6 +1570,8 @@ elif page == "Risk Scoring Engine":
 
         if ml is None:
             st.info("Train the ML model to enable SHAP explanations.")
+        elif display.empty:
+            st.info("No suppliers match the current risk scoring filters.")
         else:
             shap_options = display[["supplier_id", "name"]].copy()
             shap_options["display"] = shap_options["name"].str[:28] + " (" + shap_options["supplier_id"] + ")"
@@ -1000,13 +1725,613 @@ elif page == "Risk Scoring Engine":
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# PAGE 3: SUPPLIER PROFILE
+# PAGE 3: EARLY WARNING AGENT
+# ═══════════════════════════════════════════════════════════════════════
+
+elif page == "Early Warning Agent":
+    st.markdown('<div class="page-title">Early Warning Agent</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Supplier deterioration detection from KPI trends, events, claims, APQP delays, and continuity exposure</div>', unsafe_allow_html=True)
+
+    alerts = build_supplier_trend_alerts(
+        suppliers=suppliers,
+        kpis=kpis,
+        risk_scores=risk_scores,
+        claims=claims,
+        audits=audits,
+        events=events,
+        apqp=apqp,
+        supplier_ids=filtered_ids,
+        top_n=75,
+    )
+
+    alert_df = pd.DataFrame([a.model_dump() for a in alerts])
+
+    ac1, ac2, ac3, ac4 = st.columns(4)
+    with ac1:
+        st.markdown(kpi_card("Active Alerts", f"{len(alerts):,}"), unsafe_allow_html=True)
+    with ac2:
+        critical_n = int((alert_df["alert_level"] == "critical").sum()) if not alert_df.empty else 0
+        st.markdown(kpi_card("Critical", f"{critical_n:,}", delta_direction="up" if critical_n else "flat"), unsafe_allow_html=True)
+    with ac3:
+        early_n = int((alert_df["current_risk"] == "green").sum()) if not alert_df.empty else 0
+        st.markdown(kpi_card("GREEN Drift", f"{early_n:,}", delta="early deterioration", delta_direction="up" if early_n else "flat"), unsafe_allow_html=True)
+    with ac4:
+        single_source_n = sum(
+            1 for a in alerts
+            if any("Single-source" in signal for signal in a.signals)
+        )
+        st.markdown(kpi_card("Single-Source Exposure", f"{single_source_n:,}", delta_direction="up" if single_source_n else "flat"), unsafe_allow_html=True)
+
+    if alert_df.empty:
+        st.info("No deteriorating suppliers detected for the current filters.")
+        st.stop()
+
+    fc1, fc2 = st.columns([1, 1])
+    with fc1:
+        level_filter = st.multiselect(
+            "Alert level",
+            ["critical", "high", "medium", "watch"],
+            default=["critical", "high", "medium"],
+        )
+    with fc2:
+        risk_filter = st.multiselect(
+            "Current risk",
+            ["red", "amber", "green", "unknown"],
+            default=[],
+            placeholder="All risk tiers",
+        )
+
+    filtered_alerts = alert_df.copy()
+    if level_filter:
+        filtered_alerts = filtered_alerts[filtered_alerts["alert_level"].isin(level_filter)]
+    if risk_filter:
+        filtered_alerts = filtered_alerts[filtered_alerts["current_risk"].isin(risk_filter)]
+
+    st.markdown('<div class="section-header">Deterioration Watchlist</div>', unsafe_allow_html=True)
+    table = filtered_alerts[[
+        "supplier_name", "supplier_id", "current_risk", "alert_level",
+        "trend_score", "direction", "escalation_owner", "recommended_action"
+    ]].copy()
+    table.columns = [
+        "Supplier", "ID", "Current Risk", "Alert", "Trend Score",
+        "Direction", "Owner", "Recommended Action",
+    ]
+    st.dataframe(table, use_container_width=True, height=360, hide_index=True)
+
+    st.markdown('<div class="section-header">Alert Evidence</div>', unsafe_allow_html=True)
+    selected_options = [
+        f"{row.supplier_name} ({row.supplier_id})"
+        for row in alerts
+        if row.supplier_id in set(filtered_alerts["supplier_id"])
+    ]
+    if selected_options:
+        selected_alert = st.selectbox("Select alert", selected_options)
+        selected_id = selected_alert.split("(")[-1].replace(")", "").strip()
+        alert = next(a for a in alerts if a.supplier_id == selected_id)
+
+        ec1, ec2 = st.columns([1, 1])
+        with ec1:
+            st.markdown(f"""
+            <div class="ai-summary">
+                <div class="ai-badge">Agentic Early Warning</div>
+                <div style="font-size:1rem; color:#f1f5f9; font-weight:700;">{alert.supplier_name}</div>
+                <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.35rem;">
+                    {alert.direction.title()} · {alert.alert_level.upper()} · Score {alert.trend_score:.1f}/100
+                </div>
+                <div style="font-size:0.82rem; color:#cbd5e1; margin-top:0.8rem;">{alert.recommended_action}</div>
+                <div style="font-size:0.72rem; color:#64748b; margin-top:0.5rem;">Owner: {alert.escalation_owner}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown('<div class="section-header">Signals</div>', unsafe_allow_html=True)
+            for signal in alert.signals:
+                st.markdown(f"- {signal}")
+
+        with ec2:
+            evidence_df = pd.DataFrame(
+                [{"Metric": key, "Value": value} for key, value in alert.evidence.items()]
+            )
+            evidence_df["Value"] = evidence_df["Value"].astype(str)
+            st.dataframe(evidence_df, use_container_width=True, hide_index=True)
+            st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
+            st.markdown(", ".join(f"`{doc}`" for doc in alert.source_documents))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PAGE 4: SCAR / CAPA TRIAGE
+# ═══════════════════════════════════════════════════════════════════════
+
+elif page == "SCAR/CAPA Triage":
+    st.markdown('<div class="page-title">SCAR/CAPA Triage</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Operational triage for supplier quality escapes, SCAR escalation, CAPA evidence, and closure governance</div>', unsafe_allow_html=True)
+
+    mode = st.radio("Triage mode", ["Existing claim", "Manual issue"], horizontal=True)
+
+    supplier_options = filtered_suppliers[["supplier_id", "name"]].copy()
+    supplier_options["display"] = supplier_options["name"] + " (" + supplier_options["supplier_id"] + ")"
+
+    if mode == "Existing claim":
+        claim_pool = claims[claims["supplier_id"].isin(filtered_ids)].copy()
+        if claim_pool.empty:
+            st.info("No claims available for the current filters.")
+            st.stop()
+
+        claim_pool["display"] = (
+            claim_pool["incident_number"].astype(str)
+            + " - "
+            + claim_pool["supplier_name"].astype(str).str[:34]
+            + " - "
+            + claim_pool["category"].astype(str)
+        )
+        claim_pool = claim_pool.sort_values("creation_date", ascending=False)
+        selected_claim = st.selectbox("Select claim", claim_pool["display"].tolist())
+        incident = selected_claim.split(" - ")[0].strip()
+        claim = claim_pool[claim_pool["incident_number"] == incident].iloc[0]
+        sid = claim["supplier_id"]
+    else:
+        selected_supplier = st.selectbox("Select supplier", supplier_options["display"].tolist())
+        sid = selected_supplier.split("(")[-1].replace(")", "").strip()
+        claim = None
+
+    sup = suppliers[suppliers["supplier_id"] == sid].iloc[0]
+    risk_match = risk_scores[risk_scores["supplier_id"] == sid]
+    risk_row = risk_match.iloc[0] if not risk_match.empty else {}
+    sup_claims = claims[claims["supplier_id"] == sid]
+    sup_kpis = kpis[kpis["supplier_id"] == sid].sort_values("year_month")
+    sup_audits = audits[audits["supplier_id"] == sid]
+    sup_events = events[events["supplier_id"] == sid]
+
+    if mode == "Manual issue":
+        mc1, mc2 = st.columns([2, 1])
+        with mc1:
+            issue_description = st.text_input("Issue", value="Quality escape")
+        with mc2:
+            detected_at_customer = st.checkbox("Customer / field detected", value=False)
+        nc1, nc2, nc3 = st.columns(3)
+        with nc1:
+            bad_parts = st.number_input("Bad parts", min_value=0, value=50, step=10)
+        with nc2:
+            suspected_parts = st.number_input("Suspected parts", min_value=0, value=100, step=10)
+        with nc3:
+            recurrent = st.checkbox("Recurring issue", value=False)
+        triage = triage_manual_issue(
+            supplier=sup,
+            risk_row=risk_row,
+            issue_description=issue_description,
+            bad_parts=int(bad_parts),
+            suspected_parts=int(suspected_parts),
+            detected_at_customer=detected_at_customer,
+            recurrent=recurrent,
+            supplier_claims=sup_claims,
+            supplier_kpis=sup_kpis,
+            supplier_audits=sup_audits,
+            supplier_events=sup_events,
+        )
+    else:
+        triage = triage_claim(
+            claim=claim,
+            supplier=sup,
+            risk_row=risk_row,
+            supplier_claims=sup_claims,
+            supplier_kpis=sup_kpis,
+            supplier_audits=sup_audits,
+            supplier_events=sup_events,
+        )
+
+    tc1, tc2, tc3, tc4 = st.columns(4)
+    with tc1:
+        st.markdown(kpi_card("Finding Grade", triage.finding_grade), unsafe_allow_html=True)
+    with tc2:
+        st.markdown(kpi_card("SCAR Level", triage.scar_escalation_level), unsafe_allow_html=True)
+    with tc3:
+        st.markdown(kpi_card("Severity", f"{triage.severity_score:.1f}/100"), unsafe_allow_html=True)
+    with tc4:
+        st.markdown(kpi_card("Owner", triage.owner[:24]), unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="ai-summary">
+        <div class="ai-badge">Agentic SCAR/CAPA Triage</div>
+        <div style="font-size:1rem; color:#f1f5f9; font-weight:700;">{triage.supplier_name}</div>
+        <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.35rem;">
+            {triage.incident_number} · {triage.issue_summary}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    tr1, tr2 = st.columns(2)
+    with tr1:
+        st.markdown('<div class="section-header">Escalation Triggers</div>', unsafe_allow_html=True)
+        for item in triage.triggers:
+            st.markdown(f"- {item}")
+
+        st.markdown('<div class="section-header">Immediate Containment</div>', unsafe_allow_html=True)
+        for item in triage.immediate_containment:
+            st.markdown(f"- {item}")
+
+    with tr2:
+        st.markdown('<div class="section-header">Deadlines</div>', unsafe_allow_html=True)
+        deadline_df = pd.DataFrame(
+            [{"Phase": key.replace("_", " ").title(), "Timeline": value} for key, value in triage.deadlines.items()]
+        )
+        st.dataframe(deadline_df, use_container_width=True, hide_index=True)
+
+        st.markdown('<div class="section-header">Escalation Actions</div>', unsafe_allow_html=True)
+        if triage.escalation_actions:
+            for item in triage.escalation_actions:
+                st.markdown(f"- {item}")
+        else:
+            st.markdown("- No escalation beyond standard monitoring required from current evidence.")
+
+    ev1, ev2 = st.columns(2)
+    with ev1:
+        st.markdown('<div class="section-header">Required Evidence</div>', unsafe_allow_html=True)
+        for item in triage.required_evidence:
+            st.markdown(f"- {item}")
+    with ev2:
+        st.markdown('<div class="section-header">Closure Criteria</div>', unsafe_allow_html=True)
+        for item in triage.closure_criteria:
+            st.markdown(f"- {item}")
+        st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
+        st.markdown(", ".join(f"`{doc}`" for doc in triage.source_documents))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PAGE 5: APQP READINESS AGENT
+# ═══════════════════════════════════════════════════════════════════════
+
+elif page == "APQP Readiness Agent":
+    st.markdown('<div class="page-title">APQP Readiness Agent</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Launch readiness decisioning from APQP gates, PPAP evidence, supplier risk, claims, and external events</div>', unsafe_allow_html=True)
+
+    project_pool = apqp[apqp["supplier_id"].isin(filtered_ids)].copy()
+    if project_pool.empty:
+        st.info("No APQP projects available for the current filters.")
+        st.stop()
+
+    status_filter = st.multiselect(
+        "Programme status",
+        sorted(project_pool["status"].dropna().unique()),
+        default=[],
+        placeholder="All statuses",
+    )
+    if status_filter:
+        project_pool = project_pool[project_pool["status"].isin(status_filter)]
+
+    project_pool["display"] = (
+        project_pool["project_id"].astype(str)
+        + " - "
+        + project_pool["supplier_name"].astype(str).str[:34]
+        + " - "
+        + project_pool["project_type"].astype(str)
+        + " - "
+        + project_pool["status"].astype(str)
+    )
+    project_pool = project_pool.sort_values(["is_delayed", "completion_pct"], ascending=[False, True])
+    selected_project = st.selectbox("Select APQP project", project_pool["display"].tolist())
+    project_id = selected_project.split(" - ")[0].strip()
+    project = project_pool[project_pool["project_id"] == project_id].iloc[0]
+    sid = project["supplier_id"]
+
+    sup = suppliers[suppliers["supplier_id"] == sid].iloc[0]
+    risk_match = risk_scores[risk_scores["supplier_id"] == sid]
+    risk_row = risk_match.iloc[0] if not risk_match.empty else {}
+    sup_claims = claims[claims["supplier_id"] == sid]
+    sup_events = events[events["supplier_id"] == sid]
+
+    decision = assess_apqp_launch_readiness(
+        project=project,
+        supplier=sup,
+        risk_row=risk_row,
+        supplier_claims=sup_claims,
+        supplier_events=sup_events,
+    )
+
+    dc1, dc2, dc3, dc4 = st.columns(4)
+    with dc1:
+        st.markdown(kpi_card("Decision", decision.launch_decision.replace("_", " ")), unsafe_allow_html=True)
+    with dc2:
+        st.markdown(kpi_card("Readiness", f"{decision.readiness_score:.1f}/100"), unsafe_allow_html=True)
+    with dc3:
+        st.markdown(kpi_card("Blockers", f"{len(decision.blockers):,}", delta_direction="up" if decision.blockers else "flat"), unsafe_allow_html=True)
+    with dc4:
+        st.markdown(kpi_card("Owner", decision.owner[:24]), unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="ai-summary">
+        <div class="ai-badge">Agentic APQP Readiness</div>
+        <div style="font-size:1rem; color:#f1f5f9; font-weight:700;">{decision.supplier_name}</div>
+        <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.35rem;">
+            {decision.project_id} · {project['project_type']} · {project['status']} · completion {project['completion_pct']:.0f}%
+        </div>
+        <div style="font-size:0.84rem; color:#cbd5e1; margin-top:0.8rem;">{decision.decision_summary}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    ar1, ar2 = st.columns(2)
+    with ar1:
+        st.markdown('<div class="section-header">Launch Blockers</div>', unsafe_allow_html=True)
+        if decision.blockers:
+            for blocker in decision.blockers:
+                st.markdown(f"- {blocker}")
+        else:
+            st.markdown("- No launch blockers detected.")
+
+    with ar2:
+        st.markdown('<div class="section-header">Launch Risks</div>', unsafe_allow_html=True)
+        if decision.risks:
+            for risk in decision.risks:
+                st.markdown(f"- {risk}")
+        else:
+            st.markdown("- No conditional launch risks detected.")
+
+    st.markdown('<div class="section-header">Gate Findings</div>', unsafe_allow_html=True)
+    if decision.gate_findings:
+        gate_df = pd.DataFrame([finding.model_dump() for finding in decision.gate_findings])
+        gate_df.columns = ["Gate", "Status", "Issue", "Required Action"]
+        st.dataframe(gate_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("Required pre-SOP gates are validated.")
+
+    rr1, rr2 = st.columns(2)
+    with rr1:
+        st.markdown('<div class="section-header">Recovery Actions</div>', unsafe_allow_html=True)
+        for action in decision.recovery_actions:
+            st.markdown(f"- {action}")
+    with rr2:
+        st.markdown('<div class="section-header">Required Evidence</div>', unsafe_allow_html=True)
+        for item in decision.required_evidence:
+            st.markdown(f"- {item}")
+        st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
+        st.markdown(", ".join(f"`{doc}`" for doc in decision.source_documents))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PAGE 6: SINGLE-SOURCE CONTINUITY AGENT
+# ═══════════════════════════════════════════════════════════════════════
+
+elif page == "Continuity Agent":
+    st.markdown('<div class="page-title">Continuity Agent</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Single-source continuity mitigation, buffer stock targets, BCP controls, and dual-source urgency</div>', unsafe_allow_html=True)
+
+    plans = build_continuity_watchlist(
+        suppliers=suppliers,
+        risk_scores=risk_scores,
+        claims=claims,
+        events=events,
+        apqp=apqp,
+        supplier_ids=filtered_ids,
+        top_n=75,
+    )
+    plan_df = pd.DataFrame([p.model_dump() for p in plans])
+
+    cc1, cc2, cc3, cc4 = st.columns(4)
+    with cc1:
+        st.markdown(kpi_card("Single-Source Watchlist", f"{len(plans):,}"), unsafe_allow_html=True)
+    with cc2:
+        critical_n = int((plan_df["continuity_level"] == "critical").sum()) if not plan_df.empty else 0
+        st.markdown(kpi_card("Critical", f"{critical_n:,}", delta_direction="up" if critical_n else "flat"), unsafe_allow_html=True)
+    with cc3:
+        red_n = int((plan_df["risk_tier"] == "red").sum()) if not plan_df.empty else 0
+        st.markdown(kpi_card("RED Single Source", f"{red_n:,}", delta_direction="up" if red_n else "flat"), unsafe_allow_html=True)
+    with cc4:
+        avg_score = plan_df["continuity_score"].mean() if not plan_df.empty else 0
+        st.markdown(kpi_card("Avg Exposure", f"{avg_score:.1f}/100"), unsafe_allow_html=True)
+
+    if plan_df.empty:
+        st.info("No single-source suppliers match the current filters.")
+        st.stop()
+
+    cf1, cf2 = st.columns(2)
+    with cf1:
+        level_filter = st.multiselect(
+            "Continuity level",
+            ["critical", "high", "medium", "monitor"],
+            default=["critical", "high", "medium"],
+        )
+    with cf2:
+        risk_filter = st.multiselect(
+            "Risk tier",
+            ["red", "amber", "green", "unknown"],
+            default=[],
+            placeholder="All risk tiers",
+        )
+
+    filtered_plans = plan_df.copy()
+    if level_filter:
+        filtered_plans = filtered_plans[filtered_plans["continuity_level"].isin(level_filter)]
+    if risk_filter:
+        filtered_plans = filtered_plans[filtered_plans["risk_tier"].isin(risk_filter)]
+
+    st.markdown('<div class="section-header">Single-Source Continuity Watchlist</div>', unsafe_allow_html=True)
+    watchlist = filtered_plans[[
+        "supplier_name", "supplier_id", "risk_tier", "continuity_level",
+        "continuity_score", "buffer_stock_target_days", "assessment_frequency",
+        "escalation_owner",
+    ]].copy()
+    watchlist.columns = [
+        "Supplier", "ID", "Risk Tier", "Continuity", "Score",
+        "Buffer Target", "Assessment", "Owner",
+    ]
+    st.dataframe(watchlist, use_container_width=True, height=340, hide_index=True)
+
+    selected_options = [
+        f"{plan.supplier_name} ({plan.supplier_id})"
+        for plan in plans
+        if plan.supplier_id in set(filtered_plans["supplier_id"])
+    ]
+    if not selected_options:
+        st.info("No suppliers match the selected continuity filters.")
+        st.stop()
+
+    st.markdown('<div class="section-header">Mitigation Plan</div>', unsafe_allow_html=True)
+    selected_plan = st.selectbox("Select supplier", selected_options)
+    selected_id = selected_plan.split("(")[-1].replace(")", "").strip()
+    plan = next(p for p in plans if p.supplier_id == selected_id)
+
+    st.markdown(f"""
+    <div class="ai-summary">
+        <div class="ai-badge">Agentic Continuity Plan</div>
+        <div style="font-size:1rem; color:#f1f5f9; font-weight:700;">{plan.supplier_name}</div>
+        <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.35rem;">
+            {plan.continuity_level.upper()} · Risk {plan.risk_tier.upper()} · Score {plan.continuity_score:.1f}/100 · Buffer target {plan.buffer_stock_target_days}
+        </div>
+        <div style="font-size:0.84rem; color:#cbd5e1; margin-top:0.8rem;">{plan.decision_summary}</div>
+        <div style="font-size:0.72rem; color:#64748b; margin-top:0.5rem;">Owner: {plan.escalation_owner} · Review: {plan.assessment_frequency}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    cp1, cp2 = st.columns(2)
+    with cp1:
+        st.markdown('<div class="section-header">Exposure Drivers</div>', unsafe_allow_html=True)
+        for item in plan.exposure_drivers:
+            st.markdown(f"- {item}")
+
+        st.markdown('<div class="section-header">Mandatory Actions</div>', unsafe_allow_html=True)
+        for item in plan.mandatory_actions:
+            st.markdown(f"- {item}")
+
+    with cp2:
+        st.markdown('<div class="section-header">Dual-Sourcing Actions</div>', unsafe_allow_html=True)
+        for item in plan.dual_sourcing_actions:
+            st.markdown(f"- {item}")
+
+        st.markdown('<div class="section-header">BCP Controls</div>', unsafe_allow_html=True)
+        for item in plan.bcp_controls:
+            st.markdown(f"- {item}")
+
+        st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
+        st.markdown(", ".join(f"`{doc}`" for doc in plan.source_documents))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PAGE 7: AUDIT PLANNING AGENT
+# ═══════════════════════════════════════════════════════════════════════
+
+elif page == "Audit Planning Agent":
+    st.markdown('<div class="page-title">Audit Planning Agent</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">For-cause audit trigger detection, scope planning, evidence requests, and audit scheduling guidance</div>', unsafe_allow_html=True)
+
+    audit_plans = build_audit_plan_watchlist(
+        suppliers=suppliers,
+        risk_scores=risk_scores,
+        kpis=kpis,
+        claims=claims,
+        audits=audits,
+        events=events,
+        supplier_ids=filtered_ids,
+        top_n=75,
+    )
+    audit_df = pd.DataFrame([p.model_dump() for p in audit_plans])
+
+    au1, au2, au3, au4 = st.columns(4)
+    with au1:
+        st.markdown(kpi_card("Audit Triggers", f"{len(audit_plans):,}"), unsafe_allow_html=True)
+    with au2:
+        immediate_n = int((audit_df["urgency"] == "immediate").sum()) if not audit_df.empty else 0
+        st.markdown(kpi_card("Immediate", f"{immediate_n:,}", delta_direction="up" if immediate_n else "flat"), unsafe_allow_html=True)
+    with au3:
+        for_cause_n = int((audit_df["audit_type"] == "For-Cause Audit").sum()) if not audit_df.empty else 0
+        st.markdown(kpi_card("For-Cause", f"{for_cause_n:,}", delta_direction="up" if for_cause_n else "flat"), unsafe_allow_html=True)
+    with au4:
+        red_related = sum(1 for p in audit_plans if any("RED" in t or "red" in t for t in p.triggers))
+        st.markdown(kpi_card("RED Linked", f"{red_related:,}", delta_direction="up" if red_related else "flat"), unsafe_allow_html=True)
+
+    if audit_df.empty:
+        st.info("No audit triggers detected for the current filters.")
+        st.stop()
+
+    af1, af2 = st.columns(2)
+    with af1:
+        urgency_filter = st.multiselect(
+            "Urgency",
+            ["immediate", "high", "medium", "scheduled"],
+            default=["immediate", "high", "medium"],
+        )
+    with af2:
+        type_filter = st.multiselect(
+            "Audit type",
+            sorted(audit_df["audit_type"].unique()),
+            default=[],
+            placeholder="All audit types",
+        )
+
+    filtered_audits = audit_df.copy()
+    if urgency_filter:
+        filtered_audits = filtered_audits[filtered_audits["urgency"].isin(urgency_filter)]
+    if type_filter:
+        filtered_audits = filtered_audits[filtered_audits["audit_type"].isin(type_filter)]
+
+    st.markdown('<div class="section-header">Audit Trigger Watchlist</div>', unsafe_allow_html=True)
+    table = filtered_audits[[
+        "supplier_name", "supplier_id", "audit_type", "urgency",
+        "schedule_timeline", "owner"
+    ]].copy()
+    table.columns = ["Supplier", "ID", "Audit Type", "Urgency", "Timeline", "Owner"]
+    st.dataframe(table, use_container_width=True, height=340, hide_index=True)
+
+    selected_options = [
+        f"{plan.supplier_name} ({plan.supplier_id})"
+        for plan in audit_plans
+        if plan.supplier_id in set(filtered_audits["supplier_id"])
+    ]
+    if not selected_options:
+        st.info("No suppliers match the selected audit filters.")
+        st.stop()
+
+    st.markdown('<div class="section-header">Audit Plan</div>', unsafe_allow_html=True)
+    selected_plan = st.selectbox("Select supplier", selected_options)
+    selected_id = selected_plan.split("(")[-1].replace(")", "").strip()
+    plan = next(p for p in audit_plans if p.supplier_id == selected_id)
+
+    st.markdown(f"""
+    <div class="ai-summary">
+        <div class="ai-badge">Agentic Audit Plan</div>
+        <div style="font-size:1rem; color:#f1f5f9; font-weight:700;">{plan.supplier_name}</div>
+        <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.35rem;">
+            {plan.audit_type} · {plan.urgency.upper()} · {plan.schedule_timeline}
+        </div>
+        <div style="font-size:0.72rem; color:#64748b; margin-top:0.5rem;">Owner: {plan.owner}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    ap1, ap2 = st.columns(2)
+    with ap1:
+        st.markdown('<div class="section-header">Triggers</div>', unsafe_allow_html=True)
+        for trigger in plan.triggers:
+            st.markdown(f"- {trigger}")
+
+        st.markdown('<div class="section-header">Audit Scope</div>', unsafe_allow_html=True)
+        for item in plan.audit_scope:
+            st.markdown(f"- {item}")
+
+        st.markdown('<div class="section-header">Checklist Focus</div>', unsafe_allow_html=True)
+        for item in plan.checklist_focus:
+            st.markdown(f"- {item}")
+
+    with ap2:
+        st.markdown('<div class="section-header">Evidence To Request</div>', unsafe_allow_html=True)
+        for item in plan.evidence_to_request:
+            st.markdown(f"- {item}")
+
+        st.markdown('<div class="section-header">Expected Outputs</div>', unsafe_allow_html=True)
+        for item in plan.expected_outputs:
+            st.markdown(f"- {item}")
+
+        st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
+        st.markdown(", ".join(f"`{doc}`" for doc in plan.source_documents))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PAGE 8: SUPPLIER PROFILE
 # ═══════════════════════════════════════════════════════════════════════
 
 elif page == "Supplier Profile":
     st.markdown('<div class="page-title">Supplier Profile</div>', unsafe_allow_html=True)
 
     supplier_options = filtered_suppliers[["supplier_id", "name"]].copy()
+    if supplier_options.empty:
+        st.info("No suppliers match the current sidebar filters.")
+        st.stop()
     supplier_options["display"] = supplier_options["name"] + " (" + supplier_options["supplier_id"] + ")"
     sel = st.selectbox("Select Supplier", supplier_options["display"].tolist(),
                        label_visibility="collapsed")
@@ -1090,9 +2415,103 @@ elif page == "Supplier Profile":
             plotly_dark_layout(fig, height=200)
             st.plotly_chart(fig, use_container_width=True)
 
-    # Tabs: Claims / Audits / Events / APQP / ML Explainer
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["Claims", "Audits", "External Events", "APQP Programs", "ML Explainer"])
+    # Tabs: Intake agent / Claims / Audits / Events / APQP / ML Explainer
+    tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["Development Brief", "Claims", "Audits", "External Events", "APQP Programs", "ML Explainer"])
+
+    with tab0:
+        brief_key = f"supplier_development_brief_{sid}"
+        c_action, c_meta = st.columns([1, 2])
+        with c_action:
+            if st.button("Generate Brief", type="primary", key=f"generate_brief_{sid}"):
+                with st.spinner("Reviewing supplier evidence and SICC guidance..."):
+                    brief = generate_supplier_development_brief(
+                        supplier=sup,
+                        risk_row=risk_row,
+                        kpis=sup_kpis,
+                        claims=sup_claims,
+                        audits=sup_audits,
+                        events=sup_events,
+                        apqp=sup_apqp,
+                        use_llm=bool(os.getenv("GROQ_API_KEY")),
+                    )
+                st.session_state[brief_key] = brief.model_dump()
+        with c_meta:
+            st.markdown(
+                '<div style="font-size:0.78rem; color:#64748b; padding-top:0.45rem;">'
+                'Creates a governed supplier development brief from portfolio evidence, KPI thresholds, and SICC policy guidance.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        if brief_key not in st.session_state:
+            brief = generate_supplier_development_brief(
+                supplier=sup,
+                risk_row=risk_row,
+                kpis=sup_kpis,
+                claims=sup_claims,
+                audits=sup_audits,
+                events=sup_events,
+                apqp=sup_apqp,
+                use_llm=False,
+            )
+            st.session_state[brief_key] = brief.model_dump()
+
+        brief = SupplierDevelopmentBrief.model_validate(st.session_state[brief_key])
+
+        bc1, bc2, bc3 = st.columns(3)
+        with bc1:
+            st.markdown(kpi_card("Risk Level", brief.risk_level.upper()), unsafe_allow_html=True)
+        with bc2:
+            st.markdown(kpi_card("Pathway", brief.recommended_pathway[:34]), unsafe_allow_html=True)
+        with bc3:
+            st.markdown(kpi_card("Generation", brief.generation_mode.replace("_", " ").title()), unsafe_allow_html=True)
+
+        st.markdown('<div class="section-header">Situation Summary</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="ai-summary"><div style="font-size:0.84rem; color:#cbd5e1;">{brief.situation_summary}</div></div>', unsafe_allow_html=True)
+
+        dc1, dc2 = st.columns(2)
+        with dc1:
+            st.markdown('<div class="section-header">Risk Drivers</div>', unsafe_allow_html=True)
+            for driver in brief.primary_risk_drivers:
+                st.markdown(f"- {driver}")
+        with dc2:
+            st.markdown('<div class="section-header">Identified Gaps</div>', unsafe_allow_html=True)
+            for gap in brief.identified_gaps:
+                st.markdown(f"- {gap}")
+
+        st.markdown('<div class="section-header">Development Actions</div>', unsafe_allow_html=True)
+        action_rows = [
+            {
+                "priority": action.priority,
+                "owner": action.owner,
+                "due_date": action.due_date,
+                "action": action.action,
+                "evidence_required": "; ".join(action.evidence_required),
+            }
+            for action in brief.development_actions
+        ]
+        st.dataframe(pd.DataFrame(action_rows), use_container_width=True, hide_index=True)
+
+        ec1, ec2 = st.columns(2)
+        with ec1:
+            st.markdown('<div class="section-header">Escalation Triggers</div>', unsafe_allow_html=True)
+            for trigger in brief.escalation_triggers:
+                st.markdown(f"- {trigger}")
+        with ec2:
+            st.markdown('<div class="section-header">Exit Criteria</div>', unsafe_allow_html=True)
+            for criterion in brief.exit_criteria:
+                st.markdown(f"- {criterion}")
+
+        st.markdown('<div class="section-header">SICC Source Documents</div>', unsafe_allow_html=True)
+        st.markdown(", ".join(f"`{doc}`" for doc in brief.source_documents))
+        st.download_button(
+            "Download Brief",
+            data=brief_to_markdown(brief),
+            file_name=f"{sid}_supplier_development_brief.md",
+            mime="text/markdown",
+            key=f"download_brief_{sid}",
+        )
 
     with tab1:
         if not sup_claims.empty:
@@ -1579,38 +2998,8 @@ elif page == "Supplier Q&A Agent":
                 if filter_region:
                     result_df = result_df[result_df["region"].isin(filter_region)]
 
-                # LLM intent classification
-                @st.cache_data(ttl=300, show_spinner=False)
-                def classify_intent(q: str) -> dict:
-                    from litellm import completion as _completion
-                    import json as _json
-                    prompt = f"""Classify this supplier portfolio query into a structured filter.
-
-Query: {q}
-
-Return ONLY a JSON object with these exact fields (no markdown, no explanation):
-{{
-  "intent": "red_risk" | "single_source" | "ppm_threshold" | "audit_findings" | "capa_events" | "geopolitical" | "apqp_delayed" | "general",
-  "country": "country name or null",
-  "ppm_threshold": number or null,
-  "risk_tier": "red" | "amber" | "green" | null,
-  "finding_type": "Major NCR" | "Critical NCR" | "Minor NCR" | null
-}}"""
-                    try:
-                        resp = _completion(
-                            model="groq/openai/gpt-oss-120b",
-                            messages=[{"role": "user", "content": prompt}],
-                            temperature=0, max_tokens=120,
-                        )
-                        text = resp.choices[0].message.content.strip()
-                        text = text.replace("```json", "").replace("```", "").strip()
-                        return _json.loads(text)
-                    except Exception:
-                        return {"intent": "general", "country": None,
-                                "ppm_threshold": None, "risk_tier": None, "finding_type": None}
-
                 with st.spinner("Analysing query..."):
-                    intent = classify_intent(query)
+                    intent = classify_portfolio_intent(query)
 
                 answer_text = ""
                 show_df     = None
@@ -1697,7 +3086,7 @@ Return ONLY a JSON object with these exact fields (no markdown, no explanation):
                 border:1px solid #1e2d45; border-radius:8px;">
         ⬡ <strong>Two-layer Q&A.</strong>
         Portfolio Data mode queries structured supplier KPIs, risk scores, audits, and events directly from SQLite.
-        Knowledge Base mode uses hybrid RAG (BM25 + embedding + RRF) over {231} KB chunks
+        Knowledge Base mode uses hybrid RAG (BM25 + embedding + RRF) over {264} KB chunks
         (16 supplier quality documents) via ChromaDB · OSS-120B generator · OSS-20B groundedness checker.
     </div>""", unsafe_allow_html=True)
 
@@ -1719,6 +3108,9 @@ elif page == "What-If Simulator":
             "Sole-Source Failure", "Quality Escape", "Region Disruption",
         ])
         supplier_options = filtered_suppliers[["supplier_id", "name"]].copy()
+        if supplier_options.empty:
+            st.info("No suppliers match the current sidebar filters.")
+            st.stop()
         supplier_options["display"] = (supplier_options["name"].str[:30]
                                        + " (" + supplier_options["supplier_id"] + ")")
         selected_sup = st.selectbox("Affected Supplier", supplier_options["display"].tolist())

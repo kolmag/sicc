@@ -1,0 +1,642 @@
+[
+  {
+    "id": "prac_081",
+    "question": "What do I need to do when a supplier misses the PPAP submission date but we still need parts for launch?",
+    "expected_sources": ["ppap_level_requirements.md", "apqp_phase_gate_guide.md"],
+    "category": "ppap",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_082",
+    "question": "How do I decide if a PPAP is acceptable with only minor documentation gaps, or do I have to reject it?",
+    "expected_sources": ["ppap_submission_checklist.md", "ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_083",
+    "question": "What should I check first when a supplier sends a PPAP with a PSW, flow diagram, PFMEA, control plan, and capability data?",
+    "expected_sources": ["ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_084",
+    "question": "What should a good 8D from a supplier actually contain before I accept it as closed?",
+    "expected_sources": ["scar_process_escalation.md", "corrective_action_closure_requirements.md"],
+    "category": "scar",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_085",
+    "question": "How do I write a SCAR that forces real containment instead of a vague root cause statement?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_086",
+    "question": "How do I decide whether to place a supplier on controlled shipping or keep normal receiving inspection?",
+    "expected_sources": ["scar_process_escalation.md", "risk_tier_definitions.md"],
+    "category": "containment",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_087",
+    "question": "How should I review a supplier's OTD, PPM, and response time together instead of looking at them separately?",
+    "expected_sources": ["supplier_kpi_definitions.md", "risk_tier_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_088",
+    "question": "When should we increase incoming inspection on a supplier versus starting a formal recovery plan?",
+    "expected_sources": ["risk_tier_definitions.md", "supplier_development_methodology.md"],
+    "category": "risk_tier",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_089",
+    "question": "How do I evaluate a supplier's financial risk before they become a delivery problem?",
+    "expected_sources": ["external_risk_event_response.md", "single_source_risk_management.md"],
+    "category": "financial_risk",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_090",
+    "question": "What external warning signs tell me a supplier might fail soon, even if their quality numbers still look fine?",
+    "expected_sources": ["external_risk_event_response.md", "supplier_development_methodology.md"],
+    "category": "risk_indicators",
+    "difficulty": "hard",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_091",
+    "question": "How do I assess ESG risk in a supplier quality review without turning it into a generic sustainability discussion?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "esg",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_092",
+    "question": "What evidence should I ask for when a supplier says they are ISO 9001 certified but their performance is slipping?",
+    "expected_sources": ["iso_9001_2015_requirements.md", "supplier_qualification_procedure.md"],
+    "category": "certification",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_093",
+    "question": "How do I check whether a supplier's IATF 16949 system is actually working, not just certified?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "audit_finding_classification.md"],
+    "category": "certification",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_094",
+    "question": "What are the biggest red flags in an AS9100D supplier audit report?",
+    "expected_sources": ["as9100d_supplier_control_clause_8_4.md", "audit_finding_classification.md"],
+    "category": "audit",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_095",
+    "question": "What should I do when a supplier refuses access to their sub-tier process during an audit?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md", "audit_finding_classification.md"],
+    "category": "audit",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_096",
+    "question": "How do I prepare a supplier for an APQP review without doing the work for them?",
+    "expected_sources": ["apqp_phase_gate_guide.md", "supplier_development_methodology.md"],
+    "category": "apqp",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_097",
+    "question": "How do I know if a supplier's PFMEA and control plan are actually connected properly?",
+    "expected_sources": ["ppap_submission_checklist.md", "apqp_phase_gate_guide.md"],
+    "category": "ppap",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_098",
+    "question": "What do I do when a supplier's process capability looks good on paper but we still see defects in production?",
+    "expected_sources": ["ppap_submission_checklist.md", "scar_process_escalation.md"],
+    "category": "capability",
+    "difficulty": "hard",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_099",
+    "question": "How can I tell if a supplier is hiding variation by cherry-picking data for capability studies?",
+    "expected_sources": ["ppap_submission_checklist.md", "audit_finding_classification.md"],
+    "category": "capability",
+    "difficulty": "hard",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_100",
+    "question": "What is the best way to challenge a supplier who says the part is within spec but it still fails in assembly?",
+    "expected_sources": ["scar_process_escalation.md", "ppap_submission_checklist.md"],
+    "category": "quality_escape",
+    "difficulty": "hard",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_101",
+    "question": "How do I handle a supplier who keeps asking for more time on containment but gives no real action plan?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_102",
+    "question": "How do I decide whether to accept a temporary deviation or reject the shipment outright?",
+    "expected_sources": ["scar_process_escalation.md", "risk_tier_definitions.md"],
+    "category": "containment",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_103",
+    "question": "How do I verify that a supplier's special characteristics are being controlled at the shop floor level?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "ppap_submission_checklist.md"],
+    "category": "special_characteristics",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_104",
+    "question": "What should I look for when reviewing a supplier's calibration system during an audit?",
+    "expected_sources": ["iso_9001_2015_requirements.md", "ppap_submission_checklist.md"],
+    "category": "audit",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_105",
+    "question": "What does a strong supplier recovery plan look like after repeated quality escapes?",
+    "expected_sources": ["supplier_development_methodology.md", "scar_process_escalation.md"],
+    "category": "development",
+    "difficulty": "medium",
+    "source": "perplexity"
+  },
+  {
+    "id": "prac_106",
+    "question": "Can I approve interim PPAP if the dimensional report is incomplete but the parts passed build validation?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_107",
+    "question": "How many repeat findings before we escalate a supplier to new business hold?",
+    "expected_sources": ["scar_process_escalation.md", "risk_tier_definitions.md"],
+    "category": "escalation",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_108",
+    "question": "We just had a customer complaint tied to a supplier component — what should I request from the supplier in the first 24 hours?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "quality_escape",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_109",
+    "question": "When should we require controlled shipping level 2 instead of controlled shipping level 1?",
+    "expected_sources": ["scar_process_escalation.md", "iatf_16949_supplier_requirements.md"],
+    "category": "containment",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_110",
+    "question": "What KPIs actually predict supplier quality problems before they hit production?",
+    "expected_sources": ["supplier_kpi_definitions.md", "risk_tier_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_111",
+    "question": "How do we verify a supplier actually implemented corrective actions instead of just updating paperwork?",
+    "expected_sources": ["corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_112",
+    "question": "Should we disqualify a supplier that keeps passing audits but still causes recurring defects?",
+    "expected_sources": ["supplier_development_methodology.md", "supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "hard",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_113",
+    "question": "What is the right containment approach when suspect material may already be at multiple plants?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "containment",
+    "difficulty": "hard",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_114",
+    "question": "How do I handle a supplier that refuses to share their PFMEA or control plan details?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "as9100d_supplier_control_clause_8_4.md"],
+    "category": "audit",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_115",
+    "question": "How do you calculate supplier risk when quality performance is good but delivery performance is unstable?",
+    "expected_sources": ["supplier_kpi_definitions.md", "risk_tier_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_116",
+    "question": "What happens if a supplier loses their IATF certification during an active production programme?",
+    "expected_sources": ["external_risk_event_response.md", "for_cause_audit_trigger_criteria.md"],
+    "category": "certification",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_117",
+    "question": "Can we ship customer product while supplier containment activities are still ongoing?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "containment",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_118",
+    "question": "How should we audit a supplier that outsources most of their manufacturing processes?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "for_cause_audit_trigger_criteria.md"],
+    "category": "audit",
+    "difficulty": "hard",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_119",
+    "question": "Should we require annual revalidation for low-volume service parts suppliers?",
+    "expected_sources": ["apqp_phase_gate_guide.md", "ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_120",
+    "question": "How do we manage supplier quality for prototype parts before the production process is finalised?",
+    "expected_sources": ["apqp_phase_gate_guide.md", "supplier_qualification_procedure.md"],
+    "category": "apqp",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_121",
+    "question": "How do we decide whether a supplier issue needs an on-site audit versus a remote review?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md", "iatf_16949_supplier_requirements.md"],
+    "category": "audit",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_122",
+    "question": "Can I waive PPAP for a supplier tooling transfer if the process and equipment stayed the same?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_123",
+    "question": "What should trigger escalation from supplier development support to commercial escalation?",
+    "expected_sources": ["supplier_development_methodology.md", "scar_process_escalation.md"],
+    "category": "escalation",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_124",
+    "question": "Supplier has four open SCARs and now another major defect escaped — what escalation path would you recommend?",
+    "expected_sources": ["scar_process_escalation.md", "risk_tier_definitions.md"],
+    "category": "escalation",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_125",
+    "question": "What should I look for during a manufacturing process audit to verify mistake-proofing is actually effective?",
+    "expected_sources": ["audit_finding_classification.md", "iatf_16949_supplier_requirements.md"],
+    "category": "audit",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_126",
+    "question": "How do we evaluate supplier readiness for launch when APQP timing keeps slipping?",
+    "expected_sources": ["apqp_phase_gate_guide.md"],
+    "category": "apqp",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_127",
+    "question": "What is the best approach for qualifying a new supplier with no automotive experience but strong aerospace credentials?",
+    "expected_sources": ["supplier_qualification_procedure.md", "iatf_16949_supplier_requirements.md"],
+    "category": "qualification",
+    "difficulty": "hard",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_128",
+    "question": "Can we continue sourcing from a supplier that has serious ESG violations but no current quality issues?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "esg",
+    "difficulty": "hard",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_129",
+    "question": "What are the biggest red flags during supplier onboarding that usually turn into quality problems later?",
+    "expected_sources": ["supplier_qualification_procedure.md", "audit_finding_classification.md"],
+    "category": "qualification",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_130",
+    "question": "What should we do when the supplier insists the failed measurement system is still acceptable because it passed calibration?",
+    "expected_sources": ["ppap_submission_checklist.md", "audit_finding_classification.md"],
+    "category": "measurement",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_131",
+    "question": "Can a supplier ship production parts with an interim PPAP approval if the dimensional report has one out-of-spec feature but functional testing passed?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_132",
+    "question": "What is the standard escalation path when a supplier misses their APQP Phase 3 gateway deliverables twice in a row?",
+    "expected_sources": ["apqp_phase_gate_guide.md", "supplier_development_methodology.md"],
+    "category": "apqp",
+    "difficulty": "medium",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_133",
+    "question": "A critical supplier's IATF 16949 certificate expired and their recertification audit got delayed — can we still issue new purchase orders?",
+    "expected_sources": ["external_risk_event_response.md", "supplier_qualification_procedure.md"],
+    "category": "certification",
+    "difficulty": "medium",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_134",
+    "question": "When conducting a remote process audit, what is the best way to verify tool calibration traceability without being on site?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md", "iso_9001_2015_requirements.md"],
+    "category": "audit",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_135",
+    "question": "Can I close a SCAR if the supplier provided a solid root cause but refuses to share their proprietary process parameters for the permanent fix?",
+    "expected_sources": ["corrective_action_closure_requirements.md", "scar_process_escalation.md"],
+    "category": "corrective_action",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_136",
+    "question": "Should we dual-source a critical supplier if their financial risk score just dropped to high risk but their quality PPM is perfect?",
+    "expected_sources": ["single_source_risk_management.md", "external_risk_event_response.md"],
+    "category": "dual_sourcing",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_137",
+    "question": "How do we decide when to officially disqualify a legacy supplier who has unique tooling but consistently scores below 70% on delivery?",
+    "expected_sources": ["supplier_development_methodology.md", "supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_138",
+    "question": "When evaluating a new low-cost region supplier, what specific red flags should I look for regarding hidden sub-tier dependency risks?",
+    "expected_sources": ["supplier_qualification_procedure.md", "single_source_risk_management.md"],
+    "category": "qualification",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_139",
+    "question": "If a supplier rejects our quality scorecard data claiming the defects were caused by our internal handling, how do we resolve the dispute?",
+    "expected_sources": ["scar_process_escalation.md", "supplier_kpi_definitions.md"],
+    "category": "dispute",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_140",
+    "question": "One of our key electronics distributors was just flagged for sourcing components from a sanctioned entity — what immediate actions do we take?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "sanctions",
+    "difficulty": "medium",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_141",
+    "question": "What happens if a critical supplier refuses to sign our updated ESG compliance code of conduct due to their own internal legal policies?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "esg",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_142",
+    "question": "What is the protocol if a supplier's gauge R&R study shows 25% variation but they claim the part tolerance is too tight for their standard measurement equipment?",
+    "expected_sources": ["ppap_submission_checklist.md"],
+    "category": "measurement",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_143",
+    "question": "Should we force a supplier to update their PFMEA if an operator error caused a defect that was not originally identified as a potential failure mode?",
+    "expected_sources": ["ppap_submission_checklist.md", "corrective_action_closure_requirements.md"],
+    "category": "fmea",
+    "difficulty": "medium",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_144",
+    "question": "Is it acceptable for a supplier to use a family control plan for different part numbers if the only difference is the final surface finish?",
+    "expected_sources": ["ppap_submission_checklist.md", "iatf_16949_supplier_requirements.md"],
+    "category": "ppap",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_145",
+    "question": "When a supplier claims force majeure due to localised flooding, do we still count their late shipments against their delivery OTD metric?",
+    "expected_sources": ["supplier_kpi_definitions.md", "external_risk_event_response.md"],
+    "category": "kpi",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_146",
+    "question": "Can we mandate containment actions at a supplier's expense if our incoming inspection found a single critical defect in a lot of 10,000 pieces?",
+    "expected_sources": ["scar_process_escalation.md", "audit_finding_classification.md"],
+    "category": "containment",
+    "difficulty": "medium",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_147",
+    "question": "What steps should we take if a single-source supplier refuses to provide full material disclosure for regulatory compliance submissions?",
+    "expected_sources": ["single_source_risk_management.md", "as9100d_supplier_control_clause_8_4.md"],
+    "category": "regulatory",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_148",
+    "question": "Should I approve a change request for a packaging modification if the supplier guarantees cost savings but hasn't completed standard testing yet?",
+    "expected_sources": ["ppap_level_requirements.md", "iso_9001_2015_requirements.md"],
+    "category": "change_control",
+    "difficulty": "medium",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_149",
+    "question": "What happens when a supplier's automated inspection system misses a batch of defective parts because of an unannounced software update on their line?",
+    "expected_sources": ["scar_process_escalation.md", "iso_9001_2015_requirements.md"],
+    "category": "change_control",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_150",
+    "question": "Can a supplier use statistical process control data to justify widening a drawing tolerance without submitting a formal engineering change request?",
+    "expected_sources": ["ppap_level_requirements.md", "iso_9001_2015_requirements.md"],
+    "category": "change_control",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_151",
+    "question": "We suspect a supplier is mixing reworked scrap back into virgin material batches — what testing methods can we demand to prove or disprove this?",
+    "expected_sources": ["scar_process_escalation.md", "audit_finding_classification.md"],
+    "category": "quality_escape",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_152",
+    "question": "How do I verify effective read-across implementation when a supplier updates their process at one plant but manufactures the same part family at another facility?",
+    "expected_sources": ["corrective_action_closure_requirements.md", "iatf_16949_supplier_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_153",
+    "question": "What is the best strategy to onboard a critical sub-tier supplier directed by our end customer when that supplier refuses to accept our standard quality terms?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_154",
+    "question": "What do I do when a supplier has 4 open SCARs and they just requested another extension on the root cause analysis for the oldest one?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "medium",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_155",
+    "question": "How do we validate a supplier's 8D report when their permanent corrective action is just adding another manual visual inspection station?",
+    "expected_sources": ["corrective_action_closure_requirements.md", "scar_process_escalation.md"],
+    "category": "corrective_action",
+    "difficulty": "hard",
+    "source": "chatgpt_long"
+  },
+  {
+    "id": "prac_156",
+    "question": "How do I determine if a supplier's containment activity is robust enough to stop sorting at our plant?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "containment",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_157",
+    "question": "How do we handle supplier pushback when requesting layered process audits?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md", "iatf_16949_supplier_requirements.md"],
+    "category": "audit",
+    "difficulty": "medium",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_158",
+    "question": "Supplier says the defect is caused by our drawing interpretation — how do I determine who is responsible?",
+    "expected_sources": ["as9100d_supplier_control_clause_8_4.md", "iso_9001_2015_requirements.md"],
+    "category": "dispute",
+    "difficulty": "hard",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_159",
+    "question": "Can I accept a deviation if the supplier changed sub-tier material without notification but testing still passed?",
+    "expected_sources": ["ppap_level_requirements.md", "scar_process_escalation.md"],
+    "category": "change_control",
+    "difficulty": "hard",
+    "source": "chatgpt"
+  },
+  {
+    "id": "prac_160",
+    "question": "What APQP deliverables do I need before I approve a supplier for start of production?",
+    "expected_sources": ["apqp_phase_gate_guide.md", "ppap_level_requirements.md"],
+    "category": "apqp",
+    "difficulty": "medium",
+    "source": "perplexity"
+  }
+]

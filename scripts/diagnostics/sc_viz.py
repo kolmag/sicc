@@ -12,6 +12,7 @@ import argparse
 import os
 
 import chromadb
+from chromadb.config import Settings
 import numpy as np
 import plotly.graph_objects as go
 from openai import OpenAI as OpenAIClient
@@ -23,6 +24,11 @@ COLLECTION_NAME = "sicc_kb"
 EMBED_MODEL     = "text-embedding-3-small"
 CHROMA_DB_PATH  = "chroma_db"
 TOP_K           = 15
+CHROMA_SETTINGS = Settings(
+    anonymized_telemetry=False,
+    chroma_product_telemetry_impl="scripts.chroma_noop_telemetry.NoopTelemetry",
+    chroma_telemetry_impl="scripts.chroma_noop_telemetry.NoopTelemetry",
+)
 
 
 def parse_args():
@@ -43,7 +49,10 @@ def run_sc_viz(question: str, db_path: str, out_path: str, top_k: int):
     from openai import OpenAI
 
     openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    chroma_client = chromadb.PersistentClient(path=os.path.abspath(db_path))
+    chroma_client = chromadb.PersistentClient(
+        path=os.path.abspath(db_path),
+        settings=CHROMA_SETTINGS,
+    )
     _oai = OpenAIClient(api_key=os.environ["OPENAI_API_KEY"])
 
     class EmbedFn(chromadb.EmbeddingFunction):

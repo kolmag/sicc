@@ -1,0 +1,562 @@
+[
+  {
+    "id": "prac_001",
+    "question": "A supplier just shipped 400 defective parts that got through to our assembly line. What do I do first?",
+    "expected_sources": ["scar_process_escalation.md", "for_cause_audit_trigger_criteria.md"],
+    "category": "quality_escape",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_002",
+    "question": "We found out our key connector supplier might go bankrupt. What steps should we take?",
+    "expected_sources": ["external_risk_event_response.md", "single_source_risk_management.md"],
+    "category": "financial_risk",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_003",
+    "question": "A supplier keeps closing SCARs without fixing the real problem and the same defects keep coming back. What can I do?",
+    "expected_sources": ["scar_process_escalation.md", "corrective_action_closure_requirements.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_004",
+    "question": "How do I decide whether a new part from a new supplier needs a full approval package or just a warrant?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_005",
+    "question": "Our supplier's delivery performance has been below 90% for three months in a row. What should I do?",
+    "expected_sources": ["risk_tier_definitions.md", "supplier_development_methodology.md"],
+    "category": "delivery",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_006",
+    "question": "I need to qualify a new casting supplier quickly for an urgent programme. What is the minimum I need to do?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_007",
+    "question": "We only have one supplier for a critical component and they've been flagged as high risk. What are my options?",
+    "expected_sources": ["single_source_risk_management.md", "risk_tier_definitions.md"],
+    "category": "single_source",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_008",
+    "question": "A supplier audit came back with a score of 55. What does that mean and what do I need to do next?",
+    "expected_sources": ["risk_tier_definitions.md", "audit_finding_classification.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_009",
+    "question": "How long do I have to get a corrective action plan back to a customer after they issue a major finding?",
+    "expected_sources": ["audit_finding_classification.md", "corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_010",
+    "question": "What does my supplier need to give me before I can sign off on a new part for production?",
+    "expected_sources": ["ppap_level_requirements.md", "ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_011",
+    "question": "We heard our supplier's parent company is on a sanctions list. Do we need to stop buying from them immediately?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "sanctions",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_012",
+    "question": "Our NPI programme is 6 weeks from SOP and the supplier hasn't submitted the approval package yet. What do I do?",
+    "expected_sources": ["apqp_phase_gate_guide.md", "ppap_level_requirements.md"],
+    "category": "apqp",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_013",
+    "question": "A supplier wants to move their production to a new factory. What do I need from them before I approve the move?",
+    "expected_sources": ["ppap_level_requirements.md", "iso_9001_2015_requirements.md"],
+    "category": "change_control",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_014",
+    "question": "How do I know if a supplier's quality system certification is sufficient for automotive supply?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "iso_9001_2015_requirements.md"],
+    "category": "certification",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_015",
+    "question": "We found out a supplier has been using a different raw material than what was approved. How serious is this?",
+    "expected_sources": ["ppap_level_requirements.md", "scar_process_escalation.md"],
+    "category": "change_control",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_016",
+    "question": "How many days of stock should I keep for a sole-source supplier we can't easily replace?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_017",
+    "question": "Our supplier failed the gauge measurement study for a critical dimension. Can we still approve the part?",
+    "expected_sources": ["ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_018",
+    "question": "A supplier has 5 open complaints that haven't been resolved. At what point do I escalate?",
+    "expected_sources": ["scar_process_escalation.md", "risk_tier_definitions.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_019",
+    "question": "What's the difference between a scheduled audit and a for-cause audit?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md", "iatf_16949_supplier_requirements.md"],
+    "category": "audit",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_020",
+    "question": "A supplier's delivery performance dropped suddenly after years of being reliable. What should I investigate first?",
+    "expected_sources": ["supplier_development_methodology.md", "for_cause_audit_trigger_criteria.md"],
+    "category": "delivery",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_021",
+    "question": "We want to bring in a second supplier for a part we currently buy from one source. Where do we start?",
+    "expected_sources": ["single_source_risk_management.md", "supplier_qualification_procedure.md"],
+    "category": "dual_sourcing",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_022",
+    "question": "A defective part caused a line stop at our customer. Who do I need to notify and how quickly?",
+    "expected_sources": ["scar_process_escalation.md", "risk_tier_definitions.md"],
+    "category": "escalation",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_023",
+    "question": "What's the minimum audit score a new supplier needs to get approved?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_024",
+    "question": "A supplier keeps missing deadlines on their corrective action plan. What are my options?",
+    "expected_sources": ["scar_process_escalation.md", "supplier_development_methodology.md"],
+    "category": "scar",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_025",
+    "question": "How do I write up a finding when I see a problem during a supplier visit that isn't a clear non-conformance?",
+    "expected_sources": ["audit_finding_classification.md"],
+    "category": "audit",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_026",
+    "question": "One of our suppliers is in a country experiencing political instability. What should we be doing?",
+    "expected_sources": ["external_risk_event_response.md", "single_source_risk_management.md"],
+    "category": "geopolitical",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_027",
+    "question": "We need to approve a large welded assembly but can't ship samples to the customer. How does the approval process work?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_028",
+    "question": "Our supplier's quality manager left the company. Does this affect their approved status?",
+    "expected_sources": ["single_source_risk_management.md", "supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_029",
+    "question": "How long should a supplier development programme run before we consider disqualifying the supplier?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_030",
+    "question": "Our supplier submitted a root cause of operator error for the third time this year. What should I do?",
+    "expected_sources": ["corrective_action_closure_requirements.md", "scar_process_escalation.md"],
+    "category": "corrective_action",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_031",
+    "question": "What information do I need to collect before starting a for-cause audit?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_032",
+    "question": "We just discovered parts in service might contain a material that's now restricted under REACH. What do we do?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "regulatory",
+    "difficulty": "hard"
+  },
+  {
+    "id": "prac_033",
+    "question": "A supplier is asking to reduce their buffer stock obligation. Under what conditions can we allow this?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_034",
+    "question": "How do I calculate PPM and what counts as an external defect?",
+    "expected_sources": ["supplier_kpi_definitions.md"],
+    "category": "kpi",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_035",
+    "question": "We want to give a struggling supplier a second chance after we suspended them. What is the process?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_036",
+    "question": "What is the cost of poor quality metric and how do we use it to prioritise supplier actions?",
+    "expected_sources": ["supplier_kpi_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_037",
+    "question": "A supplier claims they don't need to do a full approval package because they've made this part before for another customer. Is that correct?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_038",
+    "question": "How often do I need to visit a GREEN-tier supplier?",
+    "expected_sources": ["risk_tier_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_039",
+    "question": "A newly acquired supplier comes with existing approved parts. Do we need to requalify them?",
+    "expected_sources": ["supplier_qualification_procedure.md", "single_source_risk_management.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_040",
+    "question": "What does a supplier need to prove before we can close a quality complaint from a customer?",
+    "expected_sources": ["corrective_action_closure_requirements.md", "scar_process_escalation.md"],
+    "category": "corrective_action",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_041",
+    "question": "Our programme manager is asking when we need to start the supplier approval process for a new NPI. What's the timeline?",
+    "expected_sources": ["apqp_phase_gate_guide.md", "supplier_qualification_procedure.md"],
+    "category": "apqp",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_042",
+    "question": "A supplier says they can fix the dimension problem but need 6 weeks. Can I ship product while they fix it?",
+    "expected_sources": ["scar_process_escalation.md", "corrective_action_closure_requirements.md"],
+    "category": "containment",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_043",
+    "question": "We're selecting between two suppliers for a new programme. How do we assess which one is lower risk?",
+    "expected_sources": ["supplier_qualification_procedure.md", "risk_tier_definitions.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_044",
+    "question": "How do I know if the supplier's corrective action actually worked?",
+    "expected_sources": ["corrective_action_closure_requirements.md"],
+    "category": "corrective_action",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_045",
+    "question": "A supplier's ESG rating was just downgraded by a major agency. What do I do with that information?",
+    "expected_sources": ["external_risk_event_response.md"],
+    "category": "esg",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_046",
+    "question": "What should be in a SCAR that I send to a supplier after finding defects at incoming inspection?",
+    "expected_sources": ["scar_process_escalation.md"],
+    "category": "scar",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_047",
+    "question": "How do I set up a development programme for a supplier that's been underperforming for six months?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_048",
+    "question": "What's the minimum notice period a supplier must give us before they stop making a part?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_049",
+    "question": "A supplier audit found that operators don't know the quality procedures. How serious is this finding?",
+    "expected_sources": ["audit_finding_classification.md", "iso_9001_2015_requirements.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_050",
+    "question": "I need to present to management why we should invest in qualifying a second supplier. What are the key risk arguments?",
+    "expected_sources": ["single_source_risk_management.md", "risk_tier_definitions.md"],
+    "category": "single_source",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_051",
+    "question": "A supplier changed their sub-tier supplier for a raw material without telling us. What action should I take?",
+    "expected_sources": ["ppap_level_requirements.md", "iso_9001_2015_requirements.md"],
+    "category": "change_control",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_052",
+    "question": "How do I escalate a quality problem that the supplier's quality manager isn't taking seriously?",
+    "expected_sources": ["scar_process_escalation.md", "supplier_development_methodology.md"],
+    "category": "escalation",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_053",
+    "question": "Our customer is asking us to prove our suppliers are REACH compliant. What do we need to collect?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "as9100d_supplier_control_clause_8_4.md"],
+    "category": "regulatory",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_054",
+    "question": "What metrics should I review monthly to keep track of how a supplier is performing?",
+    "expected_sources": ["supplier_kpi_definitions.md", "iatf_16949_supplier_requirements.md"],
+    "category": "kpi",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_055",
+    "question": "A supplier passed the qualification audit but only scored 68. Can I still approve them?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_056",
+    "question": "We have a new part launching in 20 weeks. When do we need to have the supplier sample approval done by?",
+    "expected_sources": ["ppap_level_requirements.md", "apqp_phase_gate_guide.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_057",
+    "question": "A flood damaged a supplier's factory. What's our immediate response?",
+    "expected_sources": ["external_risk_event_response.md", "single_source_risk_management.md"],
+    "category": "geopolitical",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_058",
+    "question": "How do I write a development plan that a supplier will actually take seriously?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_059",
+    "question": "What should I do if I find during an audit that the supplier's work instructions are out of date?",
+    "expected_sources": ["audit_finding_classification.md", "iso_9001_2015_requirements.md"],
+    "category": "audit",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_060",
+    "question": "The customer is pushing us to approve a supplier faster than our normal process allows. What are the risks?",
+    "expected_sources": ["supplier_qualification_procedure.md", "iatf_16949_supplier_requirements.md"],
+    "category": "qualification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_061",
+    "question": "A supplier wants to use a different measurement method than what's in the approved control plan. Can they?",
+    "expected_sources": ["ppap_submission_checklist.md", "iso_9001_2015_requirements.md"],
+    "category": "change_control",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_062",
+    "question": "How do we handle a supplier that's technically good but always late on paperwork and formal responses?",
+    "expected_sources": ["scar_process_escalation.md", "supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_063",
+    "question": "What should I check when a supplier tells me a defective part was actually conforming?",
+    "expected_sources": ["corrective_action_closure_requirements.md", "audit_finding_classification.md"],
+    "category": "corrective_action",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_064",
+    "question": "How do I know if a quality problem at a supplier will affect parts already shipped to our customer?",
+    "expected_sources": ["scar_process_escalation.md", "external_risk_event_response.md"],
+    "category": "containment",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_065",
+    "question": "What does it mean when a part has a Critical Characteristic and how does that change how I manage the supplier?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "ppap_submission_checklist.md"],
+    "category": "special_characteristics",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_066",
+    "question": "We're about to place a large order with a supplier that has never supplied us before. What do we need to verify first?",
+    "expected_sources": ["supplier_qualification_procedure.md"],
+    "category": "qualification",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_067",
+    "question": "A supplier has been GREEN for 2 years but just had a bad month with high PPM. Should I reclassify them?",
+    "expected_sources": ["risk_tier_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_068",
+    "question": "We need to do a business continuity plan review with our critical suppliers. What should we be checking?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_069",
+    "question": "What's the fastest way to get a supplier back to GREEN status after they've been in RED?",
+    "expected_sources": ["risk_tier_definitions.md", "supplier_development_methodology.md"],
+    "category": "risk_tier",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_070",
+    "question": "A supplier argues that the defect was caused by our own design specification, not their manufacturing. Who is responsible?",
+    "expected_sources": ["as9100d_supplier_control_clause_8_4.md", "iso_9001_2015_requirements.md"],
+    "category": "responsibility",
+    "difficulty": "hard"
+  },
+  {
+    "id": "prac_071",
+    "question": "How do I calculate the financial exposure from a supplier quality problem?",
+    "expected_sources": ["supplier_kpi_definitions.md"],
+    "category": "kpi",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_072",
+    "question": "Our supplier's process capability study shows Cpk of 1.1 for a critical dimension. Is that acceptable?",
+    "expected_sources": ["ppap_level_requirements.md", "ppap_submission_checklist.md"],
+    "category": "ppap",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_073",
+    "question": "We need to audit a supplier that has never been audited by us before. How do I prepare?",
+    "expected_sources": ["for_cause_audit_trigger_criteria.md", "iatf_16949_supplier_requirements.md"],
+    "category": "audit",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_074",
+    "question": "How do I track whether a supplier's development plan is working?",
+    "expected_sources": ["supplier_development_methodology.md"],
+    "category": "development",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_075",
+    "question": "A supplier wants to know what level of approval package they need to submit for a standard bolt. What do I tell them?",
+    "expected_sources": ["ppap_level_requirements.md"],
+    "category": "ppap",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_076",
+    "question": "What are the signs that a supplier's quality system is deteriorating before it shows up in defect data?",
+    "expected_sources": ["supplier_development_methodology.md", "audit_finding_classification.md"],
+    "category": "risk_indicators",
+    "difficulty": "hard"
+  },
+  {
+    "id": "prac_077",
+    "question": "A supplier is ISO 9001 certified but we need them to supply automotive parts. What additional requirements apply?",
+    "expected_sources": ["iatf_16949_supplier_requirements.md", "iso_9001_2015_requirements.md"],
+    "category": "certification",
+    "difficulty": "medium"
+  },
+  {
+    "id": "prac_078",
+    "question": "How do I know if a supplier is a good candidate for preferred status?",
+    "expected_sources": ["risk_tier_definitions.md"],
+    "category": "risk_tier",
+    "difficulty": "easy"
+  },
+  {
+    "id": "prac_079",
+    "question": "We found out a competitor is also buying from our sole-source supplier and getting priority. What can we do?",
+    "expected_sources": ["single_source_risk_management.md"],
+    "category": "single_source",
+    "difficulty": "hard"
+  },
+  {
+    "id": "prac_080",
+    "question": "A supplier's FMEA lists a detection rating of 10 for a safety-critical failure mode. How serious is this?",
+    "expected_sources": ["ppap_submission_checklist.md", "audit_finding_classification.md"],
+    "category": "fmea",
+    "difficulty": "medium"
+  }
+]

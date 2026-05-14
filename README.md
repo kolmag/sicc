@@ -13,6 +13,13 @@ SICC is a production-grade Streamlit application combining ML risk scoring, RAG-
 | Risk scoring with explainability | RandomForest + XGBoost comparison · SHAP waterfall per supplier |
 | Semantic Q&A over supplier quality standards | Hybrid BM25 + embedding retrieval · BGE reranker · HyDE |
 | Structured grounded answers | OSS-120B generator · OSS-20B groundedness checker · Pydantic output |
+| Agentic supplier intake | Supplier dossier → gap analysis → development brief → actions/evidence/exit criteria |
+| Agentic early warning alerts | KPI trend drift + events + claims + APQP delays → supplier deterioration watchlist |
+| Agentic SCAR/CAPA triage | Claim/manual issue → finding grade → escalation level → containment/evidence/deadlines |
+| Agentic APQP launch readiness | APQP gates + PPAP + supplier risk → go / conditional go / hold decision |
+| Agentic single-source continuity | Single-source exposure → buffer target → BCP controls → dual-source urgency |
+| Agentic audit planning | For-cause triggers → audit type → scope/checklist/evidence plan |
+| Shared agent memory | Pydantic-validated SQLite memory + run history + evidence/run-log exports → cross-agent command center |
 | Portfolio-level executive overview | Plotly dashboards · ML prediction badges · rule-based composite score |
 | APQP/NPI programme governance | 9-phase gate tracker · delay detection |
 | Scenario simulation | Outage, cost increase, region disruption impact modelling |
@@ -24,7 +31,7 @@ SICC is a production-grade Streamlit application combining ML risk scoring, RAG-
 
 ```
 SICC
-├── app.py                        # Streamlit UI — 6 pages
+├── app.py                        # Streamlit UI — portfolio, agents, Q&A, and simulations
 │
 ├── ml/
 │   ├── train_risk_model.py       # RF + XGBoost comparison, SHAP precomputation
@@ -34,13 +41,21 @@ SICC
 ├── scripts/
 │   ├── ingest.py                 # KB ingestion: contextual retrieval + typed chunking
 │   ├── answer.py                 # RAG pipeline: HyDE → BM25+semantic → RRF → BGE → LLM
+│   ├── supplier_intake_agent.py  # Agentic supplier intake → development brief generator
+│   ├── supplier_alert_agent.py   # Agentic deterioration alert/watchlist generator
+│   ├── scar_capa_agent.py        # Agentic SCAR/CAPA triage and closure governance
+│   ├── apqp_readiness_agent.py   # Agentic APQP launch readiness decisioning
+│   ├── continuity_agent.py       # Agentic single-source continuity mitigation
+│   ├── audit_planning_agent.py   # Agentic for-cause audit planning
+│   ├── agent_memory.py           # Validated SQLite memory, run history, and failure tracking
 │   └── diagnostics/
 │       ├── tsne_viz.py           # Embedding space visualisation (2D + 3D)
 │       └── sc_viz.py             # Pre/post reranker similarity chart
 │
-├── knowledge-base/markdown/      # 15 supplier quality KB documents
+├── knowledge-base/markdown/      # 16 supplier quality KB documents
 │   ├── as9100d_supplier_control_clause_8_4.md
 │   ├── iatf_16949_supplier_requirements.md
+│   ├── iso_9001_2015_requirements.md
 │   ├── ppap_level_requirements.md
 │   ├── ppap_submission_checklist.md
 │   ├── apqp_phase_gate_guide.md
@@ -132,7 +147,7 @@ Pydantic Structured Output
 
 ## Knowledge Base
 
-**231 chunks** across 15 supplier quality documents. Three chunking strategies by document type:
+**264 chunks** across 16 supplier quality documents. Three chunking strategies by document type:
 
 | Strategy | Documents |
 |---|---|
@@ -194,7 +209,7 @@ cd sicc
 uv sync
 
 # Environment variables
-cp .env.example .env
+cp env.example .env
 # Fill in: ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY,
 #          LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 
@@ -239,10 +254,9 @@ SICC fills the ML + agentic gap in the portfolio. Apps 1–3 are all RAG Q&A. SI
 
 ---
 
-## What's next (Phases 4–6)
+## What's next (Phases 5–6)
 
-- **Phase 4:** Agentic supplier intake → development brief generator · LLM executive summary · What-If simulator remaining scenarios
-- **Phase 5:** Evaluation framework — 60 developer questions + 70 practitioner + 20 adversarial · MRR / NDCG baseline · BGE on Colab
+- **Phase 5:** Complete full evaluation run — developer, practitioner, practitioner-blind, adversarial · checkpointed Colab execution · MRR / NDCG / judged scores
 - **Phase 6:** `PRODUCTION_ARCHITECTURE.md` · `LESSONS_LEARNED_SICC.md` · pyproject.toml finalisation
 
 ---

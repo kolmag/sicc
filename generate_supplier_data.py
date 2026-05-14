@@ -230,11 +230,11 @@ def apply_noise(label, noise_rate=NOISE_RATE):
 
 # ── Generator functions ───────────────────────────────────────────────────────
 
-def generate_suppliers(n: int) -> pd.DataFrame:
+def generate_suppliers(n: int, seed: int = SEED) -> pd.DataFrame:
     """Generate supplier master table."""
-    random.seed(SEED)
-    np.random.seed(SEED)
-    fake.seed_instance(SEED)
+    random.seed(seed)
+    np.random.seed(seed)
+    fake.seed_instance(seed)
 
     families = list(PRODUCT_FAMILIES.keys())
     archetype_keys = list(ARCHETYPES.keys())
@@ -292,8 +292,9 @@ def generate_suppliers(n: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def generate_kpis(suppliers: pd.DataFrame) -> pd.DataFrame:
+def generate_kpis(suppliers: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
     """Generate 36-month KPI time series per supplier."""
+    random.seed(seed + 500)
     months = months_range(START_DATE, N_MONTHS)
     rows = []
 
@@ -302,7 +303,7 @@ def generate_kpis(suppliers: pd.DataFrame) -> pd.DataFrame:
         sid = sup["supplier_id"]
 
         # Per-supplier random seed for reproducibility
-        rng = np.random.RandomState(int(sid[3:]) + SEED)
+        rng = np.random.RandomState(int(sid[3:]) + seed)
 
         for m_idx, month in enumerate(months):
             t = m_idx  # time index 0-35
@@ -368,8 +369,10 @@ def generate_kpis(suppliers: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def generate_claims(suppliers: pd.DataFrame, kpis: pd.DataFrame) -> pd.DataFrame:
+def generate_claims(suppliers: pd.DataFrame, kpis: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
     """Generate claims based on claims.csv schema — correlated with PPM."""
+    random.seed(seed + 1000)
+    fake.seed_instance(seed + 1000)
     months = months_range(START_DATE, N_MONTHS)
     rows = []
     claim_id = 1
@@ -395,7 +398,7 @@ def generate_claims(suppliers: pd.DataFrame, kpis: pd.DataFrame) -> pd.DataFrame
         elif sup["spend_tier"] == "C":
             base_claim_rate *= 0.6
 
-        rng = np.random.RandomState(int(sid[3:]) + SEED + 1000)
+        rng = np.random.RandomState(int(sid[3:]) + seed + 1000)
 
         for month in months:
             n_claims = int(rng.poisson(max(0.1, base_claim_rate)))
@@ -464,8 +467,10 @@ def generate_claims(suppliers: pd.DataFrame, kpis: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame(rows)
 
 
-def generate_apqp_projects(suppliers: pd.DataFrame) -> pd.DataFrame:
+def generate_apqp_projects(suppliers: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
     """Generate APQP/NPI projects based on PQA schema."""
+    random.seed(seed + 1500)
+    fake.seed_instance(seed + 1500)
     rows = []
     project_id = 1
     project_types = ["New Part", "Design Change", "Process Change",
@@ -559,8 +564,10 @@ def generate_apqp_projects(suppliers: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def generate_audits(suppliers: pd.DataFrame) -> pd.DataFrame:
+def generate_audits(suppliers: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
     """Generate audit records — ~2 audits per supplier per year."""
+    random.seed(seed + 2000)
+    fake.seed_instance(seed + 2000)
     rows = []
     audit_id = 1
     audit_types = ["System Audit", "Process Audit", "Product Audit",
@@ -572,7 +579,7 @@ def generate_audits(suppliers: pd.DataFrame) -> pd.DataFrame:
     for _, sup in suppliers.iterrows():
         sid = sup["supplier_id"]
         arch = ARCHETYPES[sup["archetype"]]
-        rng = np.random.RandomState(int(sid[3:]) + SEED + 2000)
+        rng = np.random.RandomState(int(sid[3:]) + seed + 2000)
 
         # 1.5-2.5 audits per year × 3 years
         n_audits = int(rng.randint(4, 8))
@@ -687,8 +694,9 @@ def generate_risk_scores(suppliers: pd.DataFrame, kpis: pd.DataFrame) -> pd.Data
 
 # ── External events generator ────────────────────────────────────────────────
 
-def generate_external_events(suppliers: pd.DataFrame) -> pd.DataFrame:
+def generate_external_events(suppliers: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
     """Generate ESG alerts, sanctions flags, geopolitical and regulatory events."""
+    random.seed(seed + 3000)
     rows = []
     event_id = 1
 
@@ -768,7 +776,7 @@ def generate_external_events(suppliers: pd.DataFrame) -> pd.DataFrame:
         sid = sup["supplier_id"]
         arch = sup["archetype"]
         country = sup["country"]
-        rng = np.random.RandomState(int(sid[3:]) + SEED + 3000)
+        rng = np.random.RandomState(int(sid[3:]) + seed + 3000)
 
         base_rate = archetype_event_rate.get(arch, 0.25)
         if country in high_geo_risk_countries:
@@ -848,27 +856,27 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"Supplier Portfolio Data Generator")
-    print(f"Suppliers: {args.suppliers}  |  Months: {N_MONTHS}  |  Seed: {SEED}")
+    print(f"Suppliers: {args.suppliers}  |  Months: {N_MONTHS}  |  Seed: {args.seed}")
     print(f"{'='*60}\n")
 
     print("Generating supplier master...")
-    suppliers = generate_suppliers(args.suppliers)
+    suppliers = generate_suppliers(args.suppliers, seed=args.seed)
     print(f"  ✓ {len(suppliers)} suppliers")
 
     print("Generating KPI time series...")
-    kpis = generate_kpis(suppliers)
+    kpis = generate_kpis(suppliers, seed=args.seed)
     print(f"  ✓ {len(kpis)} KPI records ({N_MONTHS} months × {args.suppliers} suppliers)")
 
     print("Generating claims...")
-    claims = generate_claims(suppliers, kpis)
+    claims = generate_claims(suppliers, kpis, seed=args.seed)
     print(f"  ✓ {len(claims)} claims")
 
     print("Generating APQP projects...")
-    apqp = generate_apqp_projects(suppliers)
+    apqp = generate_apqp_projects(suppliers, seed=args.seed)
     print(f"  ✓ {len(apqp)} APQP projects")
 
     print("Generating audit records...")
-    audits = generate_audits(suppliers)
+    audits = generate_audits(suppliers, seed=args.seed)
     print(f"  ✓ {len(audits)} audit records")
 
     print("Generating risk scores...")
@@ -884,7 +892,7 @@ def main():
         print(f"    {label:<8} {n:>4} ({pct:.0f}%)")
 
     print("Generating external events...")
-    events = generate_external_events(suppliers)
+    events = generate_external_events(suppliers, seed=args.seed)
     print(f"  ✓ {len(events)} external events (ESG, sanctions, geopolitical, regulatory, financial)")
 
     tables = {

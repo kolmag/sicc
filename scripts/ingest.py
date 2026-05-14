@@ -23,16 +23,30 @@ import argparse
 import re
 import time
 from pathlib import Path
+from typing import Optional
 
 import anthropic
 import chromadb
+from chromadb.config import Settings
 from openai import OpenAI as OpenAIClient
 from dotenv import load_dotenv
-from langfuse import Langfuse, observe
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
 load_dotenv()
+
+LANGFUSE_ENABLED = bool(
+    os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")
+)
+if LANGFUSE_ENABLED:
+    from langfuse import Langfuse, observe
+else:
+    Langfuse = None
+
+    def observe(*_args, **_kwargs):
+        def decorator(func):
+            return func
+        return decorator
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +57,11 @@ HAIKU_MODEL       = "claude-haiku-4-5-20251001"
 EMBED_MODEL       = "text-embedding-3-small"
 COLLECTION_NAME   = "sicc_kb"
 README_EXCLUDE    = {"README.md", "readme.md"}
+CHROMA_SETTINGS   = Settings(
+    anonymized_telemetry=False,
+    chroma_product_telemetry_impl="scripts.chroma_noop_telemetry.NoopTelemetry",
+    chroma_telemetry_impl="scripts.chroma_noop_telemetry.NoopTelemetry",
+)
 
 # Document type → chunking strategy
 CHUNKING_STRATEGY = {
@@ -77,7 +96,8 @@ def build_clients(db_path: str):
     anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
     chroma_client = chromadb.PersistentClient(
-        path=os.path.abspath(db_path)
+        path=os.path.abspath(db_path),
+        settings=CHROMA_SETTINGS,
     )
     _oai = OpenAIClient(api_key=os.environ["OPENAI_API_KEY"])
 
@@ -88,10 +108,13 @@ def build_clients(db_path: str):
 
     embed_fn = EmbedFn()
 
-    langfuse = Langfuse(
-        public_key=os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
-        secret_key=os.environ.get("LANGFUSE_SECRET_KEY", ""),
-        host=os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+    langfuse = (
+        Langfuse(
+            public_key=os.environ["LANGFUSE_PUBLIC_KEY"],
+            secret_key=os.environ["LANGFUSE_SECRET_KEY"],
+            host=os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        )
+        if LANGFUSE_ENABLED else None
     )
 
     return anthropic_client, chroma_client, embed_fn, langfuse
@@ -408,8 +431,8 @@ def build_embed_text(
 @observe(name="ingest_document")
 def ingest_document(
     filepath: Path,
-    collection: chromadb.Collection,
-    anthropic_client: anthropic.Anthropic,
+    collection: Optional[chromadb.Collection],
+    anthropic_client: Optional[anthropic.Anthropic],
     dry_run: bool = False,
 ) -> int:
     """Ingest one markdown document. Returns number of chunks ingested."""
@@ -437,6 +460,7 @@ def ingest_document(
     ids        = []
     documents  = []
     metadatas  = []
+    dry_count  = 0
 
     for i, chunk in enumerate(chunks):
         headline      = chunk["headline"]
@@ -447,6 +471,7 @@ def ingest_document(
 
         if dry_run:
             print(f"    [dry] chunk {i:03d} | {headline[:60]}")
+            dry_count += 1
             continue
 
         # Contextual retrieval context
@@ -501,32 +526,40 @@ def ingest_document(
                 metadatas=metadatas[start:start+batch_size],
             )
 
-    return len(ids)
+    return dry_count if dry_run else len(ids)
 
 
 @observe(name="ingest_all")
-def ingest_all(kb_path: str, db_path: str, reset: bool, dry_run: bool):
+def ingest_all(
+    kb_path: str,
+    db_path: str,
+    reset: bool,
+    dry_run: bool,
+    file: Optional[str] = None,
+):
     """Ingest all markdown documents in the KB directory."""
 
-    anthropic_client, chroma_client, embed_fn, langfuse = build_clients(db_path)
+    anthropic_client = chroma_client = embed_fn = collection = None
+    if not dry_run:
+        anthropic_client, chroma_client, embed_fn, langfuse = build_clients(db_path)
 
-    # Collection setup
-    if reset:
-        try:
-            chroma_client.delete_collection(COLLECTION_NAME)
-            print(f"[ingest] Deleted existing collection: {COLLECTION_NAME}")
-        except Exception:
-            pass
+        # Collection setup
+        if reset:
+            try:
+                chroma_client.delete_collection(COLLECTION_NAME)
+                print(f"[ingest] Deleted existing collection: {COLLECTION_NAME}")
+            except Exception:
+                pass
 
-    collection = chroma_client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=embed_fn,
-        metadata={"hnsw:space": "cosine"},
-    )
+        collection = chroma_client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=embed_fn,
+            metadata={"hnsw:space": "cosine"},
+        )
 
     kb_dir   = Path(kb_path)
-    if args.file:
-        md_files = [kb_dir / args.file]
+    if file:
+        md_files = [kb_dir / file]
     else:
         md_files = sorted([f for f in kb_dir.glob("*.md") if f.name not in README_EXCLUDE])
 
@@ -535,7 +568,8 @@ def ingest_all(kb_path: str, db_path: str, reset: bool, dry_run: bool):
         return
 
     print(f"[ingest] Found {len(md_files)} documents in {kb_path}")
-    print(f"[ingest] ChromaDB: {os.path.abspath(db_path)}")
+    if not dry_run:
+        print(f"[ingest] ChromaDB: {os.path.abspath(db_path)}")
     print(f"[ingest] Collection: {COLLECTION_NAME}")
     print(f"[ingest] Mode: {'DRY RUN' if dry_run else 'FULL INGEST'}")
     print(f"[ingest] Contextual retrieval: ON (Haiku, T=0)")
@@ -558,8 +592,9 @@ def ingest_all(kb_path: str, db_path: str, reset: bool, dry_run: bool):
     print(f"\n[ingest] ══════════════════════════════════════")
     print(f"[ingest] Documents processed : {len(md_files)}")
     print(f"[ingest] Total chunks stored : {total_chunks}")
-    print(f"[ingest] Collection size     : {collection.count()} chunks")
-    print(f"[ingest] ChromaDB location   : {os.path.abspath(db_path)}")
+    if collection is not None:
+        print(f"[ingest] Collection size     : {collection.count()} chunks")
+        print(f"[ingest] ChromaDB location   : {os.path.abspath(db_path)}")
     print(f"[ingest] Done.")
 
 
@@ -572,4 +607,5 @@ if __name__ == "__main__":
         db_path=args.db,
         reset=args.reset,
         dry_run=args.dry_run,
+        file=args.file,
     )

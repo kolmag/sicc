@@ -1,7 +1,7 @@
 [project]
 name = "sicc"
 version = "0.1.0"
-description = "Add your description here"
+description = "Supplier Intelligence Command Center — ML risk scoring, hybrid RAG, and agentic supplier workflows"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
