@@ -53,18 +53,21 @@ def render(tables, filtered_suppliers, filtered_ids, filtered_risk, ml):
             "Show suppliers in China with High or Critical geopolitical events",
         ]
 
+    _qkey = "qa_rag_query" if is_rag_mode else "qa_portfolio_query"
+    if _qkey not in st.session_state:
+        st.session_state[_qkey] = ""
+
     cols = st.columns(3)
-    selected_prompt = None
     for i, prompt in enumerate(prompts):
         with cols[i % 3]:
             if st.button(prompt, key=f"prompt_{i}", use_container_width=True):
-                selected_prompt = prompt
+                st.session_state[_qkey] = prompt
 
     st.markdown("---")
 
     query = st.text_area(
         "Ask a question",
-        value=selected_prompt or "",
+        key=_qkey,
         height=80,
         placeholder=(
             "e.g. What does PPAP Level 3 require?" if is_rag_mode

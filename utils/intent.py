@@ -64,6 +64,12 @@ Rules:
         )
 
 
+_INTENT_FALLBACK = {
+    "intent": "general", "country": None, "ppm_threshold": None,
+    "risk_tier": None, "finding_type": None, "product_family": None,
+}
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def classify_portfolio_intent(q: str) -> dict:
     """
@@ -73,27 +79,32 @@ def classify_portfolio_intent(q: str) -> dict:
     """
     from litellm import completion as _completion
     import json as _json
+    import re as _re
+
     prompt = f"""Classify this supplier portfolio query into a structured filter.
 
 Query: {q}
 
 Return ONLY a JSON object with these exact fields (no markdown, no explanation):
 {{
-  "intent": "red_risk" | "single_source" | "ppm_threshold" | "audit_findings" | "capa_events" | "geopolitical" | "apqp_delayed" | "general",
+  "intent": "red_risk" | "single_source" | "ppm_threshold" | "audit_findings" | "claim_categories" | "capa_events" | "geopolitical" | "apqp_delayed" | "general",
   "country": "country name or null",
   "ppm_threshold": number or null,
   "risk_tier": "red" | "amber" | "green" | null,
-  "finding_type": "Major NCR" | "Critical NCR" | "Minor NCR" | null
+  "finding_type": "Major NCR" | "Critical NCR" | "Minor NCR" | null,
+  "product_family": "product family name or null"
 }}"""
     try:
         resp = _completion(
             model="groq/openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0, max_tokens=120,
+            temperature=0, max_tokens=150,
         )
         text = resp.choices[0].message.content.strip()
-        text = text.replace("```json", "").replace("```", "").strip()
-        return _json.loads(text)
+        # Extract the first JSON object even if the model wraps it in extra text
+        match = _re.search(r'\{.*?\}', text, _re.DOTALL)
+        if not match:
+            return _INTENT_FALLBACK
+        return _json.loads(match.group())
     except Exception:
-        return {"intent": "general", "country": None,
-                "ppm_threshold": None, "risk_tier": None, "finding_type": None}
+        return _INTENT_FALLBACK
