@@ -97,6 +97,23 @@ AMBIGUOUS_CONTEXT_PATTERNS = [
     r"^\s*is\s+(it|this|that)\s+(ok|okay|good|bad|acceptable)\s*\??\s*$",
 ]
 
+# Broader ambiguous patterns — pipeline runs but confidence is forced to "low"
+# These are questions with some content but no specific referent or process context.
+BROAD_AMBIGUOUS_PATTERNS = [
+    r"^\s*is\s+(this|that|it|the\s+supplier)\s+",      # "Is this acceptable?", "Is the supplier ok?"
+    r"^\s*should\s+we\s+",                              # "Should we be worried?", "Should we qualify them?"
+    r"^\s*are\s+we\s+(ok|okay|compliant|good|fine|safe|at risk)",  # "Are we compliant?"
+    r"^\s*how\s+(bad|serious|worried|concerned|risky)\s+is\s+(this|that|it)",  # "How bad is this?"
+    r"^\s*what\s+does\s+(this|that|it)\s+mean",         # "What does this mean for us?"
+    r"^\s*what\s+happens\s+next",                       # "What happens next?"
+    r"^\s*do\s+we\s+need\s+to\s+",                     # "Do we need to escalate?"
+    r"^\s*do\s+i\s+need\s+to\s+",                      # "Do I need to do anything?"
+    r"^\s*is\s+(it|this)\s+(ok|okay|fine|acceptable|normal|allowed|expected)\s*\??", # "Is it ok?"
+    r"^\s*are\s+(they|them|the\s+supplier)\s+",         # "Are they improving?"
+    r"^\s*what\s+do\s+i\s+do\s+(now|next|about\s+this)",  # "What do I do now?"
+    r"^\s*how\s+do\s+i\s+handle\s+(this|that|it)\s*\??",  # "How do I handle this?"
+]
+
 # ── Pydantic output schema ────────────────────────────────────────────────────
 
 class SupplierQAResult(BaseModel):
@@ -193,9 +210,9 @@ def preflight_check(question: str) -> bool:
 
 def is_context_missing_question(question: str) -> bool:
     """
-    Detect questions that cannot be answered safely without a referenced process,
-    object, event, score, supplier, or requirement. These should not be resolved
-    by guessing from whatever deadline/source happens to retrieve first.
+    Detect truly bare/underspecified questions that cannot be answered at all.
+    Returns True → pipeline short-circuits to insufficient_evidence.
+    For questions that are ambiguous but have some content, use is_broad_ambiguous_question().
     """
     q_lower = " ".join(question.lower().split())
     if any(re.search(pattern, q_lower) for pattern in AMBIGUOUS_CONTEXT_PATTERNS):
@@ -214,6 +231,18 @@ def is_context_missing_question(question: str) -> bool:
     if {"score", "good"}.issubset(tokens) and not has_domain:
         return True
     return len(tokens) <= 5 and has_vague_head and not has_domain
+
+
+def is_broad_ambiguous_question(question: str) -> bool:
+    """
+    Detect questions that are ambiguous (no specific referent or process context)
+    but have enough content to attempt an answer. Pipeline runs normally but
+    confidence is capped at 'low' in the output.
+    """
+    if is_context_missing_question(question):
+        return False
+    q_lower = " ".join(question.lower().split())
+    return any(re.search(pattern, q_lower) for pattern in BROAD_AMBIGUOUS_PATTERNS)
 
 
 # ── Step 2: HyDE query rewriting ─────────────────────────────────────────────
@@ -628,6 +657,7 @@ def structure_output(
     question: str,
     checked_answer: str,
     chunks: list[dict],
+    is_ambiguous: bool = False,
 ) -> SupplierQAResult:
     """
     Build Pydantic structured output from the checked answer.
@@ -682,7 +712,7 @@ def structure_output(
     has_finding = "FINDING:" in " ".join(
         c["metadata"].get("original_text", "") for c in chunks[:3]
     )
-    if is_context_missing_question(question):
+    if is_context_missing_question(question) or is_ambiguous:
         confidence = "low"
     elif n_sources >= 2 and has_finding:
         confidence = "high"
@@ -747,6 +777,8 @@ def answer(
     if is_context_missing_question(question):
         return structure_output(question, INSUFFICIENT_EVIDENCE_MARKER, [])
 
+    ambiguous = is_broad_ambiguous_question(question)
+
     collection, _ = build_clients(db_path)
 
     # Step 2 — HyDE rewriting
@@ -774,7 +806,7 @@ def answer(
     checked_answer = check_groundedness(question, raw_answer, ordered)
 
     # Step 8 — Structure output
-    result = structure_output(question, checked_answer, ordered)
+    result = structure_output(question, checked_answer, ordered, is_ambiguous=ambiguous)
 
     return result
 

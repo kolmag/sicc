@@ -241,6 +241,29 @@ uv run streamlit run app.py
 
 ---
 
+## Hugging Face Playground
+
+SICC also includes a small playground for practicing with Hugging Face Inference Providers via the OpenAI-compatible router. Hugging Face includes small monthly free credits for experimentation; add a token with Inference Providers permission before running it.
+
+```bash
+# Environment variable
+HUGGINGFACE_API_KEY=hf_...
+
+# Run the default model on a supplier-risk prompt
+uv run python scripts/hf_playground.py --challenge supplier-risk
+
+# Try your own prompt
+uv run python scripts/hf_playground.py --prompt "Explain PPAP Level 3 in 5 bullets"
+
+# Compare specific Hugging Face model ids
+uv run python scripts/hf_playground.py \
+  --models Qwen/Qwen3-4B-Thinking-2507 openai/gpt-oss-20b
+```
+
+Built-in challenges: `supplier-risk`, `scar-triage`, `prompt-doctor`, `red-team`.
+
+---
+
 ## Diagnostics
 
 ```bash
