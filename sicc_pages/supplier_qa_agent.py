@@ -185,9 +185,22 @@ def render(tables, filtered_suppliers, filtered_ids, filtered_risk, ml):
                 answer_text = ""
                 show_df     = None
 
+                # Metric column map: intent metric name → (dataframe column, ascending=worst first)
+                _METRIC_MAP = {
+                    "ppm":         ("avg_ppm_3m",           False),  # highest PPM = worst
+                    "otd":         ("avg_otd_3m",           True),   # lowest OTD % = worst
+                    "audit_score": ("avg_audit_score_3m",   True),   # lowest score = worst
+                    "scar_count":  ("open_scar_count",      False),  # most SCARs = worst
+                    "risk_score":  ("composite_risk_score", True),   # lowest composite = worst
+                    "spend":       ("annual_spend_eur",     False),  # highest spend first
+                }
+
                 if intent["intent"] == "red_risk" or intent.get("risk_tier") == "red":
                     tier    = intent.get("risk_tier") or "red"
+                    limit   = int(intent.get("limit") or 0)
                     show_df = result_df[result_df["risk_label"] == tier].sort_values("composite_risk_score")
+                    if limit:
+                        show_df = show_df.head(limit)
                     answer_text = f"Found **{len(show_df)} {tier.upper()}-risk suppliers** matching your criteria."
 
                 elif intent["intent"] == "single_source":
@@ -195,9 +208,44 @@ def render(tables, filtered_suppliers, filtered_ids, filtered_risk, ml):
                     answer_text = f"Found **{len(show_df)} single-source suppliers**. {len(show_df[show_df['risk_label']=='red'])} are RED risk."
 
                 elif intent["intent"] == "ppm_threshold":
-                    threshold = intent.get("ppm_threshold") or 300
-                    show_df   = result_df[result_df["avg_ppm_3m"] > threshold].sort_values("avg_ppm_3m", ascending=False)
-                    answer_text = f"Found **{len(show_df)} suppliers** with PPM > {threshold:.0f} in the last 3 months."
+                    threshold = intent.get("ppm_threshold")
+                    limit     = int(intent.get("limit") or 0)
+                    if threshold is not None:
+                        show_df = result_df[result_df["avg_ppm_3m"] > threshold].sort_values("avg_ppm_3m", ascending=False)
+                        answer_text = f"Found **{len(show_df)} suppliers** with PPM > {threshold:.0f} in the last 3 months."
+                    else:
+                        n = limit or 10
+                        show_df = result_df.sort_values("avg_ppm_3m", ascending=False).head(n)
+                        answer_text = f"**{len(show_df)} worst-performing suppliers** by PPM (3-month average, highest first)."
+
+                elif intent["intent"] == "otd_performance":
+                    threshold = intent.get("otd_threshold")
+                    limit     = int(intent.get("limit") or 0)
+                    if threshold is not None:
+                        show_df = result_df[result_df["avg_otd_3m"] < threshold].sort_values("avg_otd_3m")
+                        answer_text = f"Found **{len(show_df)} suppliers** with OTD below **{threshold:.0f}%** (3-month average)."
+                    else:
+                        n = limit or 10
+                        show_df = result_df.sort_values("avg_otd_3m").head(n)
+                        answer_text = f"**{len(show_df)} worst-performing suppliers** by OTD (3-month average, lowest first)."
+
+                elif intent["intent"] == "metric_ranking":
+                    import re as _re
+                    metric     = intent.get("metric") or "risk_score"
+                    sort_order = intent.get("sort_order") or "asc"
+                    # Extract limit: prefer LLM value, fall back to number in query text
+                    _num   = _re.search(r'\b(\d+)\b', query)
+                    limit  = int(intent.get("limit") or 0) or (int(_num.group(1)) if _num else 10)
+                    col, default_asc = _METRIC_MAP.get(metric, ("composite_risk_score", True))
+                    ascending = (sort_order == "asc") if sort_order else default_asc
+                    if col in result_df.columns:
+                        show_df = result_df.sort_values(col, ascending=ascending).head(limit)
+                        direction = "lowest" if ascending else "highest"
+                        label = col.replace("avg_", "").replace("_3m", "").replace("_", " ").upper()
+                        answer_text = f"**{len(show_df)} suppliers** — {direction} {label} (3-month average)."
+                    else:
+                        show_df = result_df.sort_values("composite_risk_score").head(limit)
+                        answer_text = f"**{len(show_df)} highest-risk suppliers** by composite score."
 
                 elif intent["intent"] == "audit_findings":
                     finding = intent.get("finding_type") or "Major NCR"
@@ -254,8 +302,37 @@ def render(tables, filtered_suppliers, filtered_ids, filtered_risk, ml):
                     answer_text = f"Found **{len(show_df)} delayed APQP programmes** linked to RED-risk suppliers."
 
                 else:
-                    show_df     = result_df.sort_values("composite_risk_score").head(20)
-                    answer_text = f"Showing top {len(show_df)} suppliers by risk score. Refine your query for a specific filter."
+                    # Keyword fallback: LLM returned "general" — still try to give a useful answer.
+                    # Extract a limit number directly from the query text.
+                    import re as _re
+                    ql = query.lower()
+                    _num = _re.search(r'\b(\d+)\b', query)
+                    _n   = int(_num.group(1)) if _num else (int(intent.get("limit") or 0) or 10)
+
+                    if any(w in ql for w in ("otd", "on-time", "on time", "delivery")):
+                        show_df     = result_df.sort_values("avg_otd_3m").head(_n)
+                        answer_text = f"**{len(show_df)} worst-performing suppliers** by OTD (3-month average, lowest first)."
+                    elif any(w in ql for w in ("ppm", "defect", "quality rate")):
+                        show_df     = result_df.sort_values("avg_ppm_3m", ascending=False).head(_n)
+                        answer_text = f"**{len(show_df)} worst-performing suppliers** by PPM (3-month average, highest first)."
+                    elif any(w in ql for w in ("audit", "audit score")):
+                        col = "avg_audit_score_3m" if "avg_audit_score_3m" in result_df.columns else "composite_risk_score"
+                        show_df     = result_df.sort_values(col).head(_n)
+                        answer_text = f"**{len(show_df)} lowest-scoring suppliers** by audit score."
+                    elif any(w in ql for w in ("scar", "corrective action")):
+                        col = "open_scar_count" if "open_scar_count" in result_df.columns else "composite_risk_score"
+                        show_df     = result_df.sort_values(col, ascending=False).head(_n)
+                        answer_text = f"**{len(show_df)} suppliers** with the most open SCARs."
+                    elif any(w in ql for w in ("spend", "cost", "expensive")):
+                        show_df     = result_df.sort_values("annual_spend_eur", ascending=False).head(_n)
+                        answer_text = f"**{len(show_df)} highest-spend suppliers** (annual EUR, descending)."
+                    elif any(w in ql for w in ("red", "high risk")):
+                        show_df     = result_df[result_df["risk_label"] == "red"].sort_values("composite_risk_score").head(_n)
+                        answer_text = f"Found **{len(show_df)} RED-risk suppliers** matching your criteria."
+                    else:
+                        # Generic "worst suppliers", "who needs attention", etc. → sort by composite risk
+                        show_df     = result_df.sort_values("composite_risk_score").head(_n)
+                        answer_text = f"**{len(show_df)} highest-risk suppliers** by composite score. You can also ask by OTD, PPM, audit score, SCARs, spend, or risk tier."
 
                 st.markdown(f"""
                 <div class="ai-summary">

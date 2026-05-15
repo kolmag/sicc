@@ -65,8 +65,9 @@ Rules:
 
 
 _INTENT_FALLBACK = {
-    "intent": "general", "country": None, "ppm_threshold": None,
-    "risk_tier": None, "finding_type": None, "product_family": None,
+    "intent": "general", "metric": None, "sort_order": None,
+    "country": None, "ppm_threshold": None, "otd_threshold": None,
+    "risk_tier": None, "finding_type": None, "product_family": None, "limit": None,
 }
 
 
@@ -87,18 +88,41 @@ Query: {q}
 
 Return ONLY a JSON object with these exact fields (no markdown, no explanation):
 {{
-  "intent": "red_risk" | "single_source" | "ppm_threshold" | "audit_findings" | "claim_categories" | "capa_events" | "geopolitical" | "apqp_delayed" | "general",
+  "intent": "red_risk" | "single_source" | "ppm_threshold" | "otd_performance" | "metric_ranking" | "audit_findings" | "claim_categories" | "capa_events" | "geopolitical" | "apqp_delayed" | "general",
+  "metric": "ppm" | "otd" | "audit_score" | "scar_count" | "risk_score" | "spend" | null,
+  "sort_order": "asc" | "desc" | null,
   "country": "country name or null",
   "ppm_threshold": number or null,
+  "otd_threshold": number or null,
   "risk_tier": "red" | "amber" | "green" | null,
   "finding_type": "Major NCR" | "Critical NCR" | "Minor NCR" | null,
-  "product_family": "product family name or null"
-}}"""
+  "product_family": "product family name or null",
+  "limit": number or null
+}}
+
+Intent guide:
+- metric_ranking: ANY ranking, comparison, or "who is worst/best" query — this is the most common intent.
+  Use it whenever the user asks about top N, worst N, best N, highest, lowest, most problems, etc.
+  - metric: ppm (defects/quality), otd (on-time delivery %), audit_score, scar_count, risk_score (default), spend
+  - sort_order: asc = lowest first (worst OTD, worst audit score); desc = highest first (worst PPM, most SCARs)
+  - Default to metric=risk_score, sort_order=asc, limit=10 if not specified.
+  - Examples: "who are my worst suppliers" → metric_ranking, risk_score, asc, limit=10
+              "top 5 worst by OTD" → metric_ranking, otd, asc, limit=5
+              "show me suppliers causing the most issues" → metric_ranking, risk_score, asc, limit=10
+              "highest spend suppliers" → metric_ranking, spend, desc, limit=10
+- otd_performance: OTD queries with a specific percentage threshold (e.g. "OTD below 85%")
+- ppm_threshold: PPM queries with a specific numeric threshold (e.g. "PPM > 500")
+- red_risk: suppliers specifically in the RED risk tier"""
     try:
-        resp = _completion(
-            model="groq/openai/gpt-oss-120b",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0, max_tokens=150,
+        from groq import Groq as _Groq
+        client = _Groq()
+        resp = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {"role": "system", "content": "You are a supplier portfolio query classifier. Return only valid JSON, no markdown, no explanation."},
+                {"role": "user",   "content": prompt},
+            ],
+            temperature=0, max_tokens=200,
         )
         text = resp.choices[0].message.content.strip()
         # Extract the first JSON object even if the model wraps it in extra text
