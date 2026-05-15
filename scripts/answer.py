@@ -611,7 +611,7 @@ def check_groundedness(
         for chunk in chunks
     )
 
-    prompt = f"""You are a groundedness checker. Your job is to verify that every claim in the answer is supported by the provided SICC context.
+    prompt = f"""You are a groundedness checker. Your job is to verify that every claim in the answer is supported by the provided SICC context, then return the verified answer.
 
 Context:
 {context_texts[:6000]}
@@ -628,21 +628,27 @@ Instructions:
 4. Numeric thresholds, deadlines, PPAP levels, score deductions, approval criteria, and mandatory actions must be explicitly present in the context. If not, remove them.
 5. If the remaining answer no longer directly answers the question, respond exactly INSUFFICIENT_EVIDENCE.
 6. If the answer says INSUFFICIENT_EVIDENCE but the context clearly contains a direct answer, return the direct answer with citations instead.
-7. Return only the cleaned answer — no explanation, no preamble.
+7. IMPORTANT: Always return the full cleaned answer text. Never respond with a single word like "Correct" or "Accurate" — return the complete answer.
 
-Cleaned answer:"""
+Cleaned answer (return the full text):"""
 
     response = completion(
         model=GROQ_20B,
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
         max_tokens=800,
-        stop=["```", "\n\n\n"],
+        stop=["```"],
     )
 
     cleaned = response.choices[0].message.content.strip()
 
-    # Empty answer guard
+    # Fallback: if the checker returned a short or empty response without explicitly
+    # saying INSUFFICIENT_EVIDENCE, it's a model failure — return the raw answer.
+    # A legitimate "no evidence" response will always contain that marker explicitly.
+    if "INSUFFICIENT_EVIDENCE" not in cleaned.upper() and len(cleaned.strip()) < 80:
+        cleaned = answer
+
+    # Empty answer guard — only reached if checker explicitly returned INSUFFICIENT_EVIDENCE
     if not cleaned or len(cleaned.strip()) < 10:
         cleaned = INSUFFICIENT_EVIDENCE_MARKER
 
