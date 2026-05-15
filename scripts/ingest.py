@@ -19,10 +19,12 @@ Usage:
 import os
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 os.environ["CHROMA_TELEMETRY"] = "False"
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import argparse
 import re
 import time
-from pathlib import Path
 from typing import Optional
 
 import anthropic
