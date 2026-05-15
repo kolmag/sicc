@@ -15,8 +15,9 @@ wheels/
 # Vector store — regenerate with: uv run scripts/ingest.py --reset
 chroma_db/
 
-# Colab
+# Colab — exclude notebooks with large cell outputs, but track the eval orchestrator
 *.ipynb
+!evaluation/SICC_Eval.ipynb
 
 # ML artefacts — regenerate with: uv run python ml/train_risk_model.py
 ml/model.pkl
