@@ -602,7 +602,7 @@ def ingest_all(
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def main() -> None:
     args = parse_args()
     ingest_all(
         kb_path=args.kb,
@@ -611,3 +611,7 @@ if __name__ == "__main__":
         dry_run=args.dry_run,
         file=args.file,
     )
+
+
+if __name__ == "__main__":
+    main()

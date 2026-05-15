@@ -819,7 +819,7 @@ def answer(
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def main() -> None:
     args = parse_args()
 
     where_filter = build_where_filter(risk=args.risk, family=args.family)
@@ -841,3 +841,7 @@ if __name__ == "__main__":
     print(f"Risk level      : {result.risk_level}")
     print(f"Sources         : {', '.join(result.sources)}")
     print("═" * 60)
+
+
+if __name__ == "__main__":
+    main()
