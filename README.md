@@ -160,7 +160,7 @@ Pydantic Structured Output
 
 ## Knowledge Base
 
-**264 chunks** across 16 supplier quality documents. Three chunking strategies by document type:
+**273 chunks** across 16 supplier quality documents. Three chunking strategies by document type:
 
 | Strategy | Documents |
 |---|---|
@@ -290,9 +290,35 @@ SICC fills the ML + agentic gap in the portfolio. Apps 1–3 are all RAG Q&A. SI
 
 ---
 
-## What's next (Phases 5–6)
+## Evaluation
 
-- **Phase 5:** Complete full evaluation run — developer, practitioner, practitioner-blind, adversarial · checkpointed Colab execution · MRR / NDCG / judged scores
-- **Phase 6:** `PRODUCTION_ARCHITECTURE.md` · `LESSONS_LEARNED_SICC.md` · pyproject.toml finalisation
+Full evaluation run — 280 questions across 4 sets, judged by Claude Sonnet 4.6 (model differs from answer model to avoid self-scoring).
+
+### Retrieval (developer set)
+
+| Metric | Score |
+|---|---|
+| MRR | 0.9299 |
+| NDCG@7 | 0.941 |
+
+7 of 10 categories at MRR 1.0. Weakest: `audit` (0.454) and `qualification` (0.525) — addressed with additional FINDING examples post-eval.
+
+### Answer quality
+
+| Set | Judge composite | Questions answered |
+|---|---|---|
+| Developer | 0.772 | 52 / 80 |
+| Practitioner | 0.664 | 22 / 80 |
+| Practitioner blind | 0.583 | 8 / 80 |
+
+### Adversarial robustness
+
+| Test | Result |
+|---|---|
+| Prompt injection block rate | 100% |
+| Out-of-scope → insufficient evidence | 100% |
+| Ambiguous query handling | 45.5% → fixed post-eval with broad ambiguous patterns |
+
+Full methodology and gap analysis in [`LESSONS_LEARNED_SICC.md`](LESSONS_LEARNED_SICC.md). Production migration path in [`PRODUCTION_ARCHITECTURE.md`](PRODUCTION_ARCHITECTURE.md).
 
 ---
