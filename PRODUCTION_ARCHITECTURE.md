@@ -10,7 +10,7 @@ This document describes what would need to change to operate SICC as a productio
 |---|---|---|
 | Database | SQLite — 1 file, 75K rows | PostgreSQL (managed) |
 | Vector store | ChromaDB local `PersistentClient` | Qdrant Cloud or Weaviate Cloud |
-| UI | Streamlit single-process, no auth | Streamlit Cloud (internal tool) or FastAPI + React |
+| UI | Streamlit validated baseline + optional FastAPI wrapper | Streamlit Cloud (internal tool) or FastAPI + React |
 | LLM — answer + HyDE | Groq OSS-120B (no SLA) | Groq (speed-critical) + Anthropic fallback |
 | LLM — groundedness | Groq OSS-20B (no SLA) | Anthropic Claude Haiku (consistent, SLA'd) |
 | LLM — KB enrichment | Anthropic Haiku (one-off at ingest) | Same — run once per KB update |
@@ -36,6 +36,7 @@ Browser (SQE / procurement / leadership)
 [Streamlit Cloud / App Server]
   ├── sicc_pages/        — page modules (no change required)
   ├── utils/             — shared helpers (no change required)
+  ├── scripts/api.py     — optional thin API wrapper for React/Next.js
   └── scripts/answer.py  — RAG pipeline (LLM clients point to prod)
         │
         ├─► [PostgreSQL] — supplier_portfolio schema
@@ -54,6 +55,11 @@ Browser (SQE / procurement / leadership)
         └─► [Langfuse Cloud] — traces, spans, evals
               custom dashboards: answer quality, latency, cost
 ```
+
+The first API slice is intentionally thin: `scripts/api.py` exposes `/health`,
+`/chat`, and `/chat/stream` while calling the same `scripts.answer.answer()`
+function used by the Streamlit Q&A page. This supports a future Next.js
+interface without disturbing the validated Streamlit path.
 
 ---
 

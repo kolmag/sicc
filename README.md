@@ -2,7 +2,11 @@
 
 **App 4 of 4** 
 
-SICC is a production-grade Streamlit application combining ML risk scoring, RAG-powered Q&A, SHAP explainability, and executive decision support across a portfolio of 1,200 suppliers.
+SICC is a production-grade supplier portfolio intelligence platform combining ML risk scoring, RAG-powered Q&A, SHAP explainability, and executive decision support across a portfolio of 1,200 suppliers.
+
+It ships with two interfaces that share the same validated AI brain:
+- **Next.js web app** — production dashboard with authentication, supplier comparison, streaming chat, CSV export, and Docker Compose deploy
+- **Streamlit app** — the validated baseline used during development and evaluation
 
 ---
 
@@ -13,6 +17,8 @@ SICC is a production-grade Streamlit application combining ML risk scoring, RAG-
 | Risk scoring with explainability | RandomForest + XGBoost comparison · SHAP waterfall per supplier |
 | Semantic Q&A over supplier quality standards | Hybrid BM25 + embedding retrieval · BGE reranker · HyDE |
 | Structured grounded answers | OSS-120B generator · OSS-20B groundedness checker · Pydantic output |
+| Portfolio data Q&A | Intent classifier → structured SQLite queries → tabular results |
+| Supplier comparison | Side-by-side metrics, KPI trends, SHAP features (up to 3 suppliers) |
 | Agentic supplier intake | Supplier dossier → gap analysis → development brief → actions/evidence/exit criteria |
 | Agentic early warning alerts | KPI trend drift + events + claims + APQP delays → supplier deterioration watchlist |
 | Agentic SCAR/CAPA triage | Claim/manual issue → finding grade → escalation level → containment/evidence/deadlines |
@@ -20,7 +26,7 @@ SICC is a production-grade Streamlit application combining ML risk scoring, RAG-
 | Agentic single-source continuity | Single-source exposure → buffer target → BCP controls → dual-source urgency |
 | Agentic audit planning | For-cause triggers → audit type → scope/checklist/evidence plan |
 | Shared agent memory | Pydantic-validated SQLite memory + run history + evidence/run-log exports → cross-agent command center |
-| Portfolio-level executive overview | Plotly dashboards · ML prediction badges · rule-based composite score |
+| Portfolio-level executive overview | KPI summary cards · ML prediction badges · rule-based composite score |
 | APQP/NPI programme governance | 9-phase gate tracker · delay detection |
 | Scenario simulation | Outage, cost increase, region disruption impact modelling |
 | Embedding space diagnostics | t-SNE 2D + 3D · pre/post reranker similarity chart |
@@ -31,62 +37,58 @@ SICC is a production-grade Streamlit application combining ML risk scoring, RAG-
 
 ```
 SICC
-├── app.py                        # Streamlit entry point — config, sidebar, routing (~177 lines)
+├── app.py                        # Streamlit entry point
 │
-├── sicc_pages/                   # One module per page, each exports render()
-│   ├── executive_portfolio.py
-│   ├── agent_command_center.py
-│   ├── risk_scoring_engine.py
-│   ├── early_warning_agent.py
-│   ├── scar_capa_triage.py
+├── web/                          # Next.js production frontend
+│   ├── app/
+│   │   ├── dashboard/            # Supplier risk dashboard (server component)
+│   │   │   ├── [supplierId]/     # Supplier detail: KPIs, SHAP, claims, audits, APQP
+│   │   │   └── compare/          # Side-by-side supplier comparison (up to 3)
+│   │   ├── chat/                 # Dual-mode chat: KB Q&A (SSE streaming) + portfolio data Q&A
+│   │   ├── login/                # Password gate
+│   │   └── api/auth/             # Session cookie route handler
+│   ├── components/
+│   │   ├── SupplierTable.tsx     # Filterable table with sparklines + compare selection
+│   │   ├── KpiCharts.tsx         # Recharts line charts (PPM, OTD, Audit, SCARs)
+│   │   ├── ShapChart.tsx         # SHAP feature importance bar chart
+│   │   ├── FeatureImportanceChart.tsx  # Global mean |SHAP| for RED risk
+│   │   ├── ApqpGates.tsx         # 9-phase APQP gate tracker
+│   │   ├── ExternalEvents.tsx    # ESG/geopolitical event log
+│   │   ├── Sparkline.tsx         # Inline SVG PPM trend sparklines
+│   │   └── RiskBadge.tsx         # RED / AMBER / GREEN badge
+│   ├── proxy.ts                  # Auth gate (Next.js 16 Proxy)
+│   └── Dockerfile
+│
+├── scripts/
+│   ├── api.py                    # FastAPI layer — thin wrapper around validated pipeline
+│   │   # Routes: /suppliers, /suppliers/{id}, /suppliers/compare,
+│   │   #         /suppliers/sparklines, /chat, /chat/stream, /chat/portfolio,
+│   │   #         /model/metrics, /model/feature-importance
+│   ├── portfolio_qa.py           # Intent classifier → structured SQLite/pandas queries
+│   ├── answer.py                 # RAG pipeline: HyDE → BM25+semantic → RRF → BGE → LLM
+│   ├── ingest.py                 # KB ingestion: contextual retrieval + typed chunking
+│   ├── generate_supplier_data.py # Deterministic data generator (seed=42)
+│   ├── supplier_intake_agent.py
+│   ├── supplier_alert_agent.py
+│   ├── scar_capa_agent.py
 │   ├── apqp_readiness_agent.py
 │   ├── continuity_agent.py
 │   ├── audit_planning_agent.py
-│   ├── supplier_profile.py
-│   ├── apqp_npi_tracker.py
-│   ├── supplier_qa_agent.py
-│   └── what_if_simulator.py
-│
-├── utils/                        # Shared helpers imported by all pages
-│   ├── config.py                 # Paths, constants, TABLE_COLUMNS
-│   ├── data.py                   # load_all_data, get_kb_chunk_count
-│   ├── ml.py                     # load_ml_artefacts, SHAP helpers, badge helpers
-│   ├── ui.py                     # CSS, risk_badge, kpi_card, plotly_dark_layout
-│   ├── agent_helpers.py          # Evidence pack, run log, memory utilities
-│   └── intent.py                 # classify_portfolio_intent, generate_executive_summary
-│
-├── ml/
-│   ├── train_risk_model.py       # RF + XGBoost comparison, SHAP precomputation
-│   └── training_report.md        # Full model comparison report
-│
-├── scripts/
-│   ├── generate_supplier_data.py # Deterministic data generator (seed=42)
-│   ├── ingest.py                 # KB ingestion: contextual retrieval + typed chunking
-│   ├── answer.py                 # RAG pipeline: HyDE → BM25+semantic → RRF → BGE → LLM
-│   ├── supplier_intake_agent.py  # Agentic supplier intake → development brief generator
-│   ├── supplier_alert_agent.py   # Agentic deterioration alert/watchlist generator
-│   ├── scar_capa_agent.py        # Agentic SCAR/CAPA triage and closure governance
-│   ├── apqp_readiness_agent.py   # Agentic APQP launch readiness decisioning
-│   ├── continuity_agent.py       # Agentic single-source continuity mitigation
-│   ├── audit_planning_agent.py   # Agentic for-cause audit planning
-│   ├── agent_memory.py           # Validated SQLite memory, run history, and failure tracking
+│   ├── agent_memory.py
 │   └── diagnostics/
-│       ├── tsne_viz.py           # Embedding space visualisation (2D + 3D)
-│       └── sc_viz.py             # Pre/post reranker similarity chart
+│       ├── tsne_viz.py
+│       └── sc_viz.py
 │
+├── sicc_pages/                   # Streamlit pages (one module per page)
+├── utils/                        # Shared helpers
+├── ml/
+│   ├── train_risk_model.py
+│   └── training_report.md
 ├── knowledge-base/markdown/      # 16 supplier quality KB documents
-│   └── *.md
-│
 ├── evaluation/
-│   ├── eval.py                   # Evaluation harness (developer/practitioner/adversarial)
-│   ├── SICC_Eval.ipynb           # Colab notebook with checkpoint resume
-│   └── questions/                # 280 evaluation questions across 4 sets
-│
-├── tests/
-│   └── test_agent_memory.py
-│
-└── data/                         # gitignored — regenerate with scripts/generate_supplier_data.py
-    └── supplier_portfolio.db     # SQLite — 7 tables, 75,411 rows
+├── data/                         # gitignored — SQLite DB (7 tables, 75,411 rows)
+├── docker-compose.yml
+└── Dockerfile.api
 ```
 
 ---
@@ -128,6 +130,32 @@ Groundedness Checker (OSS-20B via Groq)
   ▼
 Pydantic Structured Output
   { answer, confidence, action_required, insufficient_evidence, sources }
+```
+
+---
+
+## Portfolio Q&A Pipeline
+
+The chat interface has two modes:
+
+**KB mode** — streams answers from the RAG pipeline above via SSE.
+
+**Portfolio mode** — structured data queries over the SQLite database:
+
+```
+Question
+  │
+  ▼
+Intent Classifier (OSS-120B via Groq, T=0)
+  → 10 intents: red_risk · single_source · ppm_threshold · otd_performance ·
+                metric_ranking · audit_findings · claim_categories ·
+                capa_events · geopolitical · apqp_delayed
+  │
+  ▼
+Structured pandas/SQLite Query
+  │
+  ▼
+Tabular result (clickable rows → supplier detail · CSV export)
 ```
 
 ---
@@ -196,35 +224,56 @@ Generated deterministically (seed=42) with `generate_supplier_data.py`.
 ## Stack
 
 ```
-UI:           Streamlit ≥ 1.32
+Web UI:       Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui
+Charts:       Recharts (KPI trends, SHAP) · inline SVG (sparklines)
+Streamlit:    ≥ 1.32 (validated baseline)
+API:          FastAPI · uvicorn · SSE streaming
 ML:           scikit-learn, xgboost, shap, pandas, numpy, plotly
 RAG:          chromadb, openai (text-embedding-3-small), rank-bm25
 LLM:          anthropic (Haiku — ingestion enrichment)
-              litellm → groq/openai/gpt-oss-120b (answer + HyDE)
+              litellm → groq/openai/gpt-oss-120b (answer + HyDE + intent)
               litellm → groq/openai/gpt-oss-20b (groundedness checker)
 Observability: langfuse
 Validation:   pydantic
 Resilience:   tenacity
 Package mgr:  uv
-DB:           SQLite (dev)
+DB:           SQLite
+Deploy:       Docker Compose
 ```
 
 ---
 
 ## Setup
 
+### Option A — Docker Compose (recommended)
+
 ```bash
-# Clone
 git clone https://github.com/kolmag/sicc.git
 cd sicc
 
-# Install dependencies
+cp .env.example .env
+# Fill in: GROQ_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY
+# Optional: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+# Optional: SICC_PASSWORD (default: sicc2025)
+
+docker compose up --build
+```
+
+Open `http://localhost:3000`. The API runs on port 8000.
+
+> **Note:** `data/`, `ml/`, and `chroma_db/` must be pre-populated (see Option B). They are mounted as read-only volumes — rebuild not required when data changes.
+
+### Option B — Local development
+
+```bash
+git clone https://github.com/kolmag/sicc.git
+cd sicc
+
+# Python environment
 uv sync
 
-# Environment variables
 cp .env.example .env
-# Fill in: ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY,
-#          LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+# Fill in API keys
 
 # Generate synthetic dataset
 uv run python scripts/generate_supplier_data.py --out data/
@@ -235,7 +284,15 @@ uv run python ml/train_risk_model.py
 # Ingest knowledge base (~16 min — Haiku contextual retrieval per chunk)
 uv run python scripts/ingest.py --reset
 
-# Run the app
+# Start the API
+uv run sicc-api          # FastAPI on :8000
+
+# Start the web UI (separate terminal)
+cd web
+npm install
+npm run dev              # Next.js on :3000
+
+# Or run the Streamlit baseline
 uv run streamlit run app.py
 ```
 
@@ -246,16 +303,10 @@ uv run streamlit run app.py
 SICC also includes a small playground for practicing with Hugging Face Inference Providers via the OpenAI-compatible router. Hugging Face includes small monthly free credits for experimentation; add a token with Inference Providers permission before running it.
 
 ```bash
-# Environment variable
 HUGGINGFACE_API_KEY=hf_...
 
-# Run the default model on a supplier-risk prompt
 uv run python scripts/hf_playground.py --challenge supplier-risk
-
-# Try your own prompt
 uv run python scripts/hf_playground.py --prompt "Explain PPAP Level 3 in 5 bullets"
-
-# Compare specific Hugging Face model ids
 uv run python scripts/hf_playground.py \
   --models Qwen/Qwen3-4B-Thinking-2507 openai/gpt-oss-20b
 ```
@@ -267,32 +318,16 @@ Built-in challenges: `supplier-risk`, `scar-triage`, `prompt-doctor`, `red-team`
 ## Diagnostics
 
 ```bash
-# Embedding space visualisation (2D + 3D t-SNE)
 uv run python scripts/diagnostics/tsne_viz.py --color doc_type --out tsne_doc_type.html
 uv run python scripts/diagnostics/tsne_viz.py --color risk_domain --out tsne_risk_domain.html
-
-# Pre/post reranker similarity chart
 uv run python scripts/diagnostics/sc_viz.py --question "What does PPAP Level 3 require?"
 ```
 
 ---
 
-## Portfolio Context
-
-| App | Description | Key techniques |
-|---|---|---|
-| App 1: CAPA/8D Expert | 8D problem-solving assistant | RAG, ChromaDB |
-| App 2: 8D Expert Workbench | Structured 8D workflow tool | RAG, structured output |
-| App 3: Auditor Expert | ISO audit Q&A · 8.03/10 dev eval · MRR 0.903 | RAG, BGE reranker, HyDE, eval framework |
-| **App 4: SICC** | **Supplier portfolio intelligence** | **ML + SHAP + hybrid RAG + agentic pipeline** |
-
-SICC fills the ML + agentic gap in the portfolio. Apps 1–3 are all RAG Q&A. SICC demonstrates ML at scale with explainability, hybrid retrieval, and decision support across 1,200 suppliers simultaneously.
-
----
-
 ## Evaluation
 
-Full evaluation run — 280 questions across 4 sets, judged by Claude Sonnet 4.6 (model differs from answer model to avoid self-scoring).
+Full evaluation run — 280 questions across 4 sets, judged by Claude Sonnet 4.6.
 
 ### Retrieval (developer set)
 
@@ -300,8 +335,6 @@ Full evaluation run — 280 questions across 4 sets, judged by Claude Sonnet 4.6
 |---|---|
 | MRR | 0.9299 |
 | NDCG@7 | 0.941 |
-
-7 of 10 categories at MRR 1.0. Weakest: `audit` (0.454) and `qualification` (0.525) — addressed with additional FINDING examples post-eval.
 
 ### Answer quality
 
@@ -322,3 +355,14 @@ Full evaluation run — 280 questions across 4 sets, judged by Claude Sonnet 4.6
 Full methodology and gap analysis in [`LESSONS_LEARNED_SICC.md`](LESSONS_LEARNED_SICC.md). Production migration path in [`PRODUCTION_ARCHITECTURE.md`](PRODUCTION_ARCHITECTURE.md).
 
 ---
+
+## Portfolio Context
+
+| App | Description | Key techniques |
+|---|---|---|
+| App 1: CAPA/8D Expert | 8D problem-solving assistant | RAG, ChromaDB |
+| App 2: 8D Expert Workbench | Structured 8D workflow tool | RAG, structured output |
+| App 3: Auditor Expert | ISO audit Q&A · 8.03/10 dev eval · MRR 0.903 | RAG, BGE reranker, HyDE, eval framework |
+| **App 4: SICC** | **Supplier portfolio intelligence** | **ML + SHAP + hybrid RAG + agentic pipeline + Next.js production UI** |
+
+SICC fills the ML + agentic gap in the portfolio. Apps 1–3 are all RAG Q&A. SICC demonstrates ML at scale with explainability, hybrid retrieval, decision support across 1,200 suppliers simultaneously, and a production-ready web interface.

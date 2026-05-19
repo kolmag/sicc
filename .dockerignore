@@ -1,0 +1,13 @@
+web/
+.git/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+sicc.egg-info/
+.pytest_cache/
+evaluation/
+node_modules/
+*.md
+.env

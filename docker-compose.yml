@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro
+      - ./ml:/app/ml:ro
+      - ./chroma_db:/app/chroma_db:ro
+      - ./knowledge-base:/app/knowledge-base:ro
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        SICC_API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    environment:
+      SICC_API_URL: http://api:8000
+      SICC_PASSWORD: ${SICC_PASSWORD:-sicc2025}
+      NODE_ENV: production
+    depends_on:
+      - api
+    restart: unless-stopped
