@@ -3,8 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    ports:
-      - "8000:8000"
+    # Not published to the host: the API has no auth of its own and is only
+    # reached by the web service over the internal Docker network (api:8000).
+    expose:
+      - "8000"
     volumes:
       - ./data:/app/data:ro
       - ./ml:/app/ml:ro
@@ -24,7 +26,8 @@ services:
       - "3000:3000"
     environment:
       SICC_API_URL: http://api:8000
-      SICC_PASSWORD: ${SICC_PASSWORD:-sicc2025}
+      SICC_PASSWORD: ${SICC_PASSWORD:?set SICC_PASSWORD in your .env}
+      SICC_SESSION_SECRET: ${SICC_SESSION_SECRET:?set SICC_SESSION_SECRET in your .env}
       NODE_ENV: production
     depends_on:
       - api

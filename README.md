@@ -253,13 +253,17 @@ cd sicc
 
 cp .env.example .env
 # Fill in: GROQ_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY
+# Required for the web UI: SICC_PASSWORD and SICC_SESSION_SECRET
+#   (the app fails closed if either is unset; generate the secret with
+#    `openssl rand -hex 32`)
 # Optional: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
-# Optional: SICC_PASSWORD (default: sicc2025)
 
 docker compose up --build
 ```
 
-Open `http://localhost:3000`. The API runs on port 8000.
+Open `http://localhost:3000`. The API runs on port 8000 inside the Compose
+network only — it is not published to the host, since it has no auth of its own
+and is reached through the authenticated web service.
 
 > **Note:** `data/`, `ml/`, and `chroma_db/` must be pre-populated (see Option B). They are mounted as read-only volumes — rebuild not required when data changes.
 

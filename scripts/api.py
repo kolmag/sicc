@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import pickle
 import sqlite3
 import time
@@ -25,6 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+
+logger = logging.getLogger(__name__)
 
 APP_NAME = "SICC API"
 APP_VERSION = "0.1.0"
@@ -60,7 +63,6 @@ class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1)
     family: Optional[str] = None
     risk: Optional[str] = None
-    db_path: str = CHROMA_DB_PATH
     session_id: str = "api"
 
 
@@ -96,7 +98,7 @@ def _run_rag(request: ChatRequest):
     where_filter = where_filter_builder(risk=request.risk, family=request.family)
     return answer_fn(
         question=request.question,
-        db_path=request.db_path,
+        db_path=CHROMA_DB_PATH,
         where_filter=where_filter,
         session_id=request.session_id,
     )
@@ -145,14 +147,15 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 },
             )
             yield _sse("done", {"run_id": run_id})
-        except Exception as exc:
+        except Exception:
             elapsed_ms = int((time.perf_counter() - started) * 1000)
+            logger.exception("chat_stream failed (run_id=%s)", run_id)
             yield _sse(
                 "error",
                 {
                     "run_id": run_id,
                     "elapsed_ms": elapsed_ms,
-                    "message": str(exc),
+                    "message": "The SICC brain failed to process this request.",
                 },
             )
 
@@ -446,9 +449,17 @@ def feature_importance(top_n: int = Query(20, ge=1, le=61)) -> dict:
 
 
 def main() -> None:
+    import os
+
     import uvicorn
 
-    uvicorn.run("scripts.api:app", host="127.0.0.1", port=8000, reload=True)
+    # Bind to 0.0.0.0 by default so the service is reachable inside Docker
+    # (the web container talks to http://api:8000). reload is opt-in for local dev.
+    host = os.environ.get("SICC_API_HOST", "0.0.0.0")
+    port = int(os.environ.get("SICC_API_PORT", "8000"))
+    reload = os.environ.get("SICC_API_RELOAD", "").lower() in ("1", "true", "yes")
+
+    uvicorn.run("scripts.api:app", host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":
