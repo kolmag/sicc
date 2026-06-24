@@ -476,6 +476,28 @@ def reciprocal_rank_fusion(
 
 # ── Step 4: BGE reranker (CPU fallback) ──────────────────────────────────────
 
+# Cross-encoder is loaded once and reused across requests. Loading it per call
+# costs hundreds of MB and several seconds of latency on every /chat request.
+_RERANKER_MODEL = None
+_RERANKER_FAILED = False
+
+
+def _get_reranker():
+    """Lazy module-level singleton for the BGE cross-encoder.
+
+    Returns None if sentence-transformers is unavailable (CPU fallback path).
+    The failure is cached so we don't retry the import on every request.
+    """
+    global _RERANKER_MODEL, _RERANKER_FAILED
+    if _RERANKER_MODEL is None and not _RERANKER_FAILED:
+        try:
+            from sentence_transformers import CrossEncoder
+            _RERANKER_MODEL = CrossEncoder("BAAI/bge-reranker-v2-m3")
+        except Exception:
+            _RERANKER_FAILED = True
+    return _RERANKER_MODEL
+
+
 @observe(name="bge_reranker")
 def rerank_chunks(
     chunks: list[dict],
@@ -487,10 +509,12 @@ def rerank_chunks(
     CPU fallback — GPU runs on Google Colab for benchmark.
     If sentence-transformers not available, returns top_k by RRF score.
     """
-    try:
-        from sentence_transformers import CrossEncoder
-        model = CrossEncoder("BAAI/bge-reranker-v2-m3")
+    model = _get_reranker()
+    if model is None:
+        # CPU fallback — skip reranker, take top_k by RRF score
+        return chunks[:top_k]
 
+    try:
         pairs  = [(hyde_text, chunk["metadata"].get("original_text", chunk["document"][:500]))
                   for chunk in chunks[:RETRIEVAL_K]]
         scores = model.predict(pairs)
@@ -525,8 +549,10 @@ def order_chunks_for_context(chunks: list[dict]) -> list[dict]:
     evens = chunks[1::2]   # ranks 2, 4, 6, ... → end of context (reversed)
     ordered = odds + evens[::-1]
 
-    # Verify: top-ranked chunk must be at position 0
-    assert ordered[0] is chunks[0], "Chunk ordering invariant violated: top chunk not at position 0"
+    # Invariant: top-ranked chunk must be at position 0 (use an explicit check,
+    # not assert — asserts are stripped under `python -O`).
+    if ordered[0] is not chunks[0]:
+        raise RuntimeError("Chunk ordering invariant violated: top chunk not at position 0")
 
     return ordered
 
