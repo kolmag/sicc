@@ -100,6 +100,31 @@ def test_chat_stream_emits_status_result_and_done(monkeypatch):
     assert "event: done" in body
 
 
+def test_chat_is_rate_limited(monkeypatch):
+    from scripts import rate_limit
+
+    # Tight limit + clean bucket so the test is deterministic and isolated.
+    monkeypatch.setattr(rate_limit, "_RATE_LIMIT", 2)
+    rate_limit._hits.clear()
+
+    monkeypatch.setattr(api, "rag_answer", lambda **_kwargs: FakeResult(
+        answer="ok [1]", confidence="low", action_required=False,
+        insufficient_evidence=False, sources=["s.md"],
+        retrieved_sources=[], retrieved_context=[], risk_level="not_applicable",
+    ))
+    monkeypatch.setattr(api, "build_where_filter", api_filter_builder)
+    client = TestClient(api.app)
+
+    body = {"question": "hello"}
+    assert client.post("/chat", json=body).status_code == 200
+    assert client.post("/chat", json=body).status_code == 200
+    blocked = client.post("/chat", json=body)
+    assert blocked.status_code == 429
+    assert "Retry-After" in blocked.headers
+
+    rate_limit._hits.clear()
+
+
 def api_filter_builder(risk=None, family=None):
     clauses = []
     if risk:

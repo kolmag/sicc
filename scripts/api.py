@@ -21,10 +21,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from scripts.rate_limit import rate_limit
 
 
 logger = logging.getLogger(__name__)
@@ -114,7 +116,7 @@ def health() -> dict:
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(rate_limit)])
 async def chat(request: ChatRequest) -> ChatResponse:
     started = time.perf_counter()
     run_id = str(uuid.uuid4())
@@ -127,7 +129,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     )
 
 
-@app.post("/chat/stream")
+@app.post("/chat/stream", dependencies=[Depends(rate_limit)])
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     async def events() -> AsyncIterator[str]:
         started = time.perf_counter()
@@ -265,7 +267,7 @@ def compare_suppliers(ids: str = Query(..., description="Comma-separated supplie
     return {"suppliers": results}
 
 
-@app.post("/chat/portfolio")
+@app.post("/chat/portfolio", dependencies=[Depends(rate_limit)])
 async def chat_portfolio(request: PortfolioRequest) -> dict:
     started = time.perf_counter()
     run_id = str(uuid.uuid4())

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { RiskBadge } from "@/components/RiskBadge";
 import { KpiCharts, type KpiRow } from "@/components/KpiCharts";
 import { ShapChart, type ShapFeature } from "@/components/ShapChart";

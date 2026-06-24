@@ -198,7 +198,7 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  function usePrompt(p: string) {
+  function applyPrompt(p: string) {
     setInput(p);
   }
 
@@ -367,7 +367,7 @@ export default function ChatPage() {
       {/* Suggested prompts */}
       <div className="border-b border-zinc-800/60 px-6 py-2 flex gap-2 overflow-x-auto shrink-0">
         {prompts.map((p) => (
-          <button key={p} onClick={() => usePrompt(p)}
+          <button key={p} onClick={() => applyPrompt(p)}
             className="text-[10px] whitespace-nowrap border border-zinc-700 rounded-full px-2.5 py-1 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors shrink-0">
             {p}
           </button>
