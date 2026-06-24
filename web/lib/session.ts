@@ -17,12 +17,14 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function base64UrlToBytes(value: string): Uint8Array {
+function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
   let s = value.replace(/-/g, "+").replace(/_/g, "/");
   const pad = s.length % 4;
   if (pad) s += "=".repeat(4 - pad);
   const bin = atob(s);
-  const bytes = new Uint8Array(bin.length);
+  // Back the view with an explicit ArrayBuffer so the type is not the wider
+  // ArrayBufferLike (which crypto.subtle's BufferSource param rejects).
+  const bytes = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
 }
